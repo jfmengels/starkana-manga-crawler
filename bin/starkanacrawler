@@ -1,0 +1,65 @@
+#!/usr/bin/env node
+
+'use strict';
+
+var fs = require("fs");
+var async = require("async");
+var program = require('commander');
+
+var crawler = require("../index.js");
+
+var configFile = "./config.json";
+
+
+program
+    .version('0.0.1')
+    .option('-s, --series [series]', 'Series')
+    .option('-c, --chapter [chapter]', 'Chapter (or first chapter) to download', '1')
+    .option('-C, --maxChapter [maxChapter]', 'Chapter up to which to download')
+    .option('-O, --outputDirectory [directory]', 'Setting: Directory in which the files will be downloaded.')
+    .option('-S, --save', 'Save settings so that they will automatically be reused on the next call.')
+    .parse(process.argv);
+
+if (!program.series) {
+    gracefulEnd("Missing series argument.");
+}
+if (!program.chapter) {
+    program.chapter = 1;
+}
+
+var config = {},
+    defaultConfig = {
+        outputDirectory: "."
+    };
+
+try {
+    var configData = fs.readFileSync(configFile);
+    config = JSON.parse(configData);
+} catch (e) {}
+
+if (program.outputDirectory) {
+    config.outputDirectory = program.outputDirectory;
+}
+
+// Filling missing config fields
+for (var i in defaultConfig) {
+    config[i] = config[i] || defaultConfig[i];
+}
+
+// Save config to file
+if (program.save) {
+    fs.writeFileSync("./config.json", JSON.stringify(config, null, 4));
+}
+
+var jobs = [crawler.createJob(program.series, program.chapter, program.maxChapter)];
+async.eachLimit(jobs, 5,
+    function(job, cb) {
+        crawler.runJob(config, job, cb);
+    },
+    function(error) {
+        if (error) {
+            console.error(error);
+        }
+        process.exit(0);
+    }
+);
