@@ -20,6 +20,14 @@ program
     .option('-S, --save', 'Save settings so that they will automatically be reused on the next call.')
     .parse(process.argv);
 
+
+function gracefulEnd(error) {
+    if (error) {
+        console.error(error);
+    }
+    process.exit(0);
+}
+
 if (!program.series) {
     gracefulEnd("Missing series argument.");
 }
@@ -56,10 +64,5 @@ async.eachLimit(jobs, 5,
     function(job, cb) {
         crawler.runJob(config, job, cb);
     },
-    function(error) {
-        if (error) {
-            console.error(error);
-        }
-        process.exit(0);
-    }
+    gracefulEnd
 );
