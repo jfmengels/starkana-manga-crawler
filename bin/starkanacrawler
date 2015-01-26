@@ -18,6 +18,7 @@ program
     .option('-C, --maxChapter [maxChapter]', 'Chapter up to which to download')
     .option('-O, --outputDirectory [directory]', 'Setting: Directory in which the files will be downloaded.')
     .option('-S, --save', 'Save settings so that they will automatically be reused on the next call.')
+    .option('-f, --outputFormat [outputFormat]', 'Set how the downloaded content will be outputted: "folder" | "zip".')
     .parse(process.argv);
 
 
@@ -37,8 +38,10 @@ if (!program.chapter) {
 
 var config = {},
     defaultConfig = {
-        outputDirectory: "."
-    };
+        outputDirectory: ".",
+        outputFormat: "folder"
+    },
+    allowedOutputFormat = ["folder", "zip"];
 
 try {
     var configData = fs.readFileSync(configFile);
@@ -47,6 +50,13 @@ try {
 
 if (program.outputDirectory) {
     config.outputDirectory = program.outputDirectory;
+}
+
+if (program.outputFormat) {
+    if(allowedOutputFormat.indexOf(program.outputFormat) === -1) {
+        gracefulEnd("Unknown output format.");
+    }
+    config.outputFormat = program.outputFormat;
 }
 
 // Filling missing config fields
