@@ -8,6 +8,20 @@ var AdmZip = require("adm-zip");
 
 var crawler = {};
 
+function findChapterLink($, chapter) {
+    var element =
+        $("#inner_page td:contains('chapter " + chapter + "')").next().children("a");
+        // $("#inner_page td a.download-link[href$='/" + chapter + "']") // Find link to the wanted chapter's page (only way to recognize it)
+        // .closest('td') // Go back to 
+        // .next()
+        // .children("a");
+
+    if (!element.length) {
+        return null;
+    }
+    return element.attr("href");
+}
+
 crawler.createJob = function(series, minChapter, maxChapter) {
     var chapters = [];
     if (!maxChapter) {
@@ -27,25 +41,16 @@ crawler.createJob = function(series, minChapter, maxChapter) {
     };
 };
 
-crawler.findChapterLink = function($, chapter) {
-    var element = $("#inner_page td a.download-link[href$='/" + chapter + "']").closest('td').next().children("a");
-    if (!element.length) {
-        return null;
-    }
-    return element.attr("href");
-};
-
 crawler.downloadChapter = function($, config, job, chapter, cb) {
-    var url = crawler.findChapterLink($, chapter),
+    var url = findChapterLink($, chapter),
         result = {
             series: job.series,
             chapter: job.chapter,
             zipFile: path.resolve(config.outputDirectory, job.series, job.series + " " + chapter + ".zip")
         };
-    // TODO Don't write to file unless config.outputFormat is "zip"
 
     if (!url) {
-        result.isMissing = true
+        result.isMissing = true;
         return cb(null, result);
     }
 
@@ -102,7 +107,7 @@ crawler.runJob = function(config, job, cb) {
                                 return cb(error);
                             }
                             return cb(null, result);
-                        })
+                        });
                     });
                 }, function(error, result) {
                     if (error) {
