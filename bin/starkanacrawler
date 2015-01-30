@@ -16,6 +16,7 @@ program
     .option('-s, --series [series]', 'Series')
     .option('-c, --chapter [chapter]', 'Chapter (or first chapter) to download', '1')
     .option('-C, --maxChapter [maxChapter]', 'Chapter up to which to download')
+    .option('-l, --untilLast', 'Download until the last released chapter')
     .option('-O, --outputDirectory [directory]', 'Setting: Directory in which the files will be downloaded.')
     .option('-S, --save', 'Save settings so that they will automatically be reused on the next call.')
     .option('-f, --outputFormat [outputFormat]', 'Set how the downloaded content will be outputted: "folder" | "zip".')
@@ -54,7 +55,7 @@ if (program.outputDirectory) {
 }
 
 if (program.outputFormat) {
-    if(allowedOutputFormat.indexOf(program.outputFormat) === -1) {
+    if (allowedOutputFormat.indexOf(program.outputFormat) === -1) {
         gracefulEnd("Unknown output format.");
     }
     config.outputFormat = program.outputFormat;
@@ -74,7 +75,15 @@ if (program.save) {
     fs.writeFileSync("./config.json", JSON.stringify(config, null, 4));
 }
 
-var jobs = [crawler.createJob(program.series, program.chapter, program.maxChapter)];
+var jobs = [
+    crawler.createJob({
+        series: program.series,
+        chapter: parseInt(program.chapter),
+        maxChapter: parseInt(program.maxChapter),
+        untilLast: program.untilLast
+    })
+];
+
 async.eachLimit(jobs, 5,
     function(job, cb) {
         crawler.runJob(config, job, cb);

@@ -34,8 +34,35 @@ function clean(results, cb) {
     });
 }
 
-crawler.createJob = function(series, minChapter, maxChapter) {
-    var chapters = [];
+function listChapters(start, end) {
+    var list = [],
+        current = start;
+    while (current <= end) {
+        list[current - start] = current;
+        current += 1;
+    }
+    return list;
+}
+
+function extractZip(zipFile, outputFile, cb) {
+    var zip = new AdmZip(zipFile);
+    zip.extractAllTo(outputFile, true);
+
+    fs.unlink(zipFile, cb);
+}
+
+crawler.createJob = function(jobRequest) {
+    var minChapter = jobRequest.chapter,
+        maxChapter = jobRequest.maxChapter;
+
+    if (jobRequest.untilLast) {
+        return {
+            series: jobRequest.series,
+            untilLast: true,
+            chapters: [minChapter]
+        };
+    }
+
     if (!maxChapter) {
         maxChapter = minChapter;
     }
@@ -44,12 +71,9 @@ crawler.createJob = function(series, minChapter, maxChapter) {
         minChapter = maxChapter;
         maxChapter = tmp;
     }
-    while (minChapter <= maxChapter) {
-        chapters.push(minChapter++);
-    }
     return {
-        series: series,
-        chapters: chapters
+        series: jobRequest.series,
+        chapters: listChapters(minChapter, maxChapter)
     };
 };
 
@@ -83,22 +107,36 @@ crawler.downloadChapter = function($, config, job, chapter, cb) {
     });
 };
 
+crawler.getPageUrl = function(series) {
+    // Starkana separates series based on the first character in their name.
+    // On odd names (starting with number, dots, etc.), that category will be "0".
+    var firstChar = series.charAt(0);
+    if (!firstChar.match(/[a-z]/i)) {
+        firstChar = "0";
+    }
+    // Url example: "http://starkana.jp/manga/O/One_Piece" for One Piece
+    return "http://starkana.jp/manga/" + firstChar + "/" + series.replace(/\s/g, "_");
+};
+
 crawler.runJob = function(config, job, cb) {
     mkdirp(path.resolve(config.outputDirectory, job.series), function(error) {
         if (error) {
             return cb(error);
         }
-        // Url example: "http://starkana.jp/manga/N/Naruto" for Naruto
-        var seriesPageUrl = "http://starkana.jp/manga/" + job.series.substring(0, 1) + "/" + job.series;
         jsdom.env({
-            url: seriesPageUrl,
+            url: crawler.getPageUrl(job.series),
             scripts: ["http://code.jquery.com/jquery.js"],
             done: function(errors, window) {
                 if (errors) {
                     return cb(errors.join(""));
                 }
-                var $ = window.$;
-                var results = [];
+                var $ = window.$,
+                    results = [];
+
+                if (job.untilLast) {
+                    job.chapters = listChapters(job.chapters[0], crawler.findLatestChapterNumber($));
+                }
+
                 async.eachLimit(job.chapters, 5, function(chapter, cb) {
                     function callback(error, result) {
                         if (error) {
@@ -111,18 +149,13 @@ crawler.runJob = function(config, job, cb) {
                         if (error) {
                             return callback(error);
                         }
-                        if (result.isMissing) {
+                        if (result.isMissing || config.outputFormat === "zip") {
                             return callback(null, result);
                         }
-                        if (config.outputFormat === "zip") {
-                            return callback(null, result.zipFile);
-                        }
-
+                        
                         result.outputFile = result.zipFile.replace(".zip", "");
-                        var zip = new AdmZip(result.zipFile);
-                        zip.extractAllTo(result.outputFile, true);
-                        fs.unlink(result.zipFile, function(error) {
-                            if (error) {
+                        extractZip(result.zipFile, result.outputFile, function(error) {
+                            if(error) {
                                 return callback(error);
                             }
                             return callback(null, result);
@@ -142,6 +175,31 @@ crawler.runJob = function(config, job, cb) {
             }
         });
     });
+};
+
+function findLatestChapterNumber(series, cb) {
+    jsdom.env({
+        url: crawler.getPageUrl(series),
+        scripts: ["http://code.jquery.com/jquery.js"],
+        done: function(errors, window) {
+            if (errors) {
+                return cb(errors.join(""));
+            }
+            return cb(null, crawler.findLatestChapterNumber(window.$));
+        }
+    });
+};
+
+crawler.findLatestChapterNumber = function($) {
+    var element = $("#inner_page td:contains('chapter')").first(),
+        delimiter = "chapter";
+
+    if (!element.length) {
+        return null;
+    }
+    var text = element.text().trim();
+    text = text.substring(text.indexOf(delimiter) + delimiter.length + 1);
+    return parseInt(text);
 };
 
 module.exports = crawler;
