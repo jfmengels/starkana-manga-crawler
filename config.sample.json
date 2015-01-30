@@ -1,4 +1,5 @@
 {
     "outputDirectory": ".",
-    "outputFormat": "folder"
+    "outputFormat": "folder",
+    "clean": false
 }

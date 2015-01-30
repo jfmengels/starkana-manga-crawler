@@ -5,6 +5,9 @@ var async = require("async");
 var jsdom = require("jsdom");
 var mkdirp = require("mkdirp");
 var AdmZip = require("adm-zip");
+var fileLister = require("file-lister");
+
+var cleaner = require("./cleaner");
 
 var crawler = {};
 
@@ -15,6 +18,20 @@ function findChapterLink($, chapter) {
         return null;
     }
     return element.attr("href");
+}
+
+function clean(results, cb) {
+    var dirs = results.map(function(item) {
+        return item.outputFile;
+    });
+    fileLister.listFiles(dirs, function(error, list) {
+        if (error) {
+            return cb(error);
+        }
+        cleaner.findDuplicatesAndCredits(list, function(error, filesToRemove) {
+            async.each(filesToRemove, fs.unlink, cb);
+        });
+    });
 }
 
 crawler.createJob = function(series, minChapter, maxChapter) {
@@ -60,9 +77,9 @@ crawler.downloadChapter = function($, config, job, chapter, cb) {
                 return cb(error, result);
             }
         }
-        res.pipe(file);
-        res.on("error", callback)
-            .on("end", callback);
+        res.pipe(file)
+            .on("error", callback)
+            .on("finish", callback);
     });
 };
 
@@ -80,18 +97,25 @@ crawler.runJob = function(config, job, cb) {
                 if (errors) {
                     return cb(errors.join(""));
                 }
-                // var $ = cheerio.load(data);
                 var $ = window.$;
+                var results = [];
                 async.eachLimit(job.chapters, 5, function(chapter, cb) {
-                    crawler.downloadChapter($, config, job, chapter, function(error, result) {
+                    function callback(error, result) {
                         if (error) {
                             return cb(error);
                         }
+                        results.push(result);
+                        return cb();
+                    }
+                    crawler.downloadChapter($, config, job, chapter, function(error, result) {
+                        if (error) {
+                            return callback(error);
+                        }
                         if (result.isMissing) {
-                            return cb(null, result);
+                            return callback(null, result);
                         }
                         if (config.outputFormat === "zip") {
-                            return cb(null, result.zipFile);
+                            return callback(null, result.zipFile);
                         }
 
                         result.outputFile = result.zipFile.replace(".zip", "");
@@ -99,16 +123,21 @@ crawler.runJob = function(config, job, cb) {
                         zip.extractAllTo(result.outputFile, true);
                         fs.unlink(result.zipFile, function(error) {
                             if (error) {
-                                return cb(error);
+                                return callback(error);
                             }
-                            return cb(null, result);
+                            return callback(null, result);
                         });
                     });
-                }, function(error, result) {
+                }, function(error) {
                     if (error) {
                         return cb(error);
                     }
-                    return cb(null, result);
+                    if (!config.clean) {
+                        return cb(null, results);
+                    }
+                    return clean(results, function(error) {
+                        return cb(error, results);
+                    });
                 });
             }
         });

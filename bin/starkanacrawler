@@ -19,6 +19,7 @@ program
     .option('-O, --outputDirectory [directory]', 'Setting: Directory in which the files will be downloaded.')
     .option('-S, --save', 'Save settings so that they will automatically be reused on the next call.')
     .option('-f, --outputFormat [outputFormat]', 'Set how the downloaded content will be outputted: "folder" | "zip".')
+    .option('-r, --clean', 'Remove starkana and scanlator team credits.')
     .parse(process.argv);
 
 
@@ -57,6 +58,10 @@ if (program.outputFormat) {
         gracefulEnd("Unknown output format.");
     }
     config.outputFormat = program.outputFormat;
+}
+
+if (program.clean) {
+    config.clean = program.clean;
 }
 
 // Filling missing config fields
