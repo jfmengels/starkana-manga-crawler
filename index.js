@@ -1,23 +1,12 @@
+var fs = require("fs");
+var path = require("path");
+var async = require("async");
 var http = require("follow-redirects").http;
 var mkdirp = require("mkdirp");
-var cheerio = require("cheerio");
+var jsdom = require("jsdom");
 var AdmZip = require("adm-zip");
 
 var crawler = {};
-
-crawler.downloadHTML = function(url, cb) {
-    http.get(url, function(res) {
-        var data = "";
-        res.on("data", function(chunk) {
-            data += chunk;
-        });
-        res.on("end", function() {
-            return cb(null, data);
-        });
-    }).on("error", function(error) {
-        return cb(error);
-    });
-};
 
 crawler.createJob = function(series, minChapter, maxChapter) {
     var chapters = [];
@@ -39,58 +28,91 @@ crawler.createJob = function(series, minChapter, maxChapter) {
 };
 
 crawler.findChapterLink = function($, chapter) {
-    // TODO changer to correct selector
-    return $("...").attr("href");
+    var element = $("#inner_page td a.download-link[href$='/" + chapter + "']").closest('td').next().children("a");
+    if (!element.length) {
+        return null;
+    }
+    return element.attr("href");
 };
 
 crawler.downloadChapter = function($, config, job, chapter, cb) {
     var url = crawler.findChapterLink($, chapter),
-        outputFile = config.outputDirectory + "/" + job.series + "/" + job.series + " " + chapter + ".zip",
-        file = fs.createWriteStream(outputFile);
+        result = {
+            series: job.series,
+            chapter: job.chapter,
+            zipFile: path.resolve(config.outputDirectory, job.series, job.series + " " + chapter + ".zip")
+        };
     // TODO Don't write to file unless config.outputFormat is "zip"
 
+    if (!url) {
+        result.isMissing = true
+        return cb(null, result);
+    }
+
+    var file = fs.createWriteStream(result.zipFile);
+
     http.get(url, function(res) {
-    	var alreadyCalled = false;
-    	function callback(error) {
-    		if (!alreadyCalled) {
-    			alreadyCalled = true;
-    			return cb(error, outputFile);
-    		}
-    	}
-        res.pipe(file)
-            .on("error", callback)
+        var alreadyCalled = false;
+
+        function callback(error) {
+            if (!alreadyCalled) {
+                alreadyCalled = true;
+                return cb(error, result);
+            }
+        }
+        res.pipe(file);
+        res.on("error", callback)
             .on("end", callback);
     });
-}
+};
 
 crawler.runJob = function(config, job, cb) {
-    mkdirp(config.outputDirectory + "/" + job.series, function(error) {
+    mkdirp(path.resolve(config.outputDirectory, job.series), function(error) {
         if (error) {
             return cb(error);
         }
-        // Url example: "http://starkana.com/manga/N/Naruto" for Naruto
-        crawler.downloadHTML("http://starkana.com/manga/" + job.series.substring(0, 1) + "/" + job.series, function(error, data) {
-            if (error) {
-                return cb(error);
-            }
-            var $ = cheerio.load(data);
-            async.eachLimit(jobs.chapters, 5, function(chapter, cb) {
-                crawler.downloadChapter($, config, job, chapter, function(error, zipFile) {
-                	if(error) {
-                		return cb(error);
-                	}
-                	if (config.outputFormat === "zip") {
-                		return cb(null, zipFile);
-                	}
+        // Url example: "http://starkana.jp/manga/N/Naruto" for Naruto
+        var seriesPageUrl = "http://starkana.jp/manga/" + job.series.substring(0, 1) + "/" + job.series;
+        jsdom.env({
+            url: seriesPageUrl,
+            scripts: ["http://code.jquery.com/jquery.js"],
+            done: function(errors, window) {
+                if (errors) {
+                    return cb(errors.join(""));
+                }
+                // var $ = cheerio.load(data);
+                var $ = window.$;
+                async.eachLimit(job.chapters, 5, function(chapter, cb) {
+                    crawler.downloadChapter($, config, job, chapter, function(error, result) {
+                        if (error) {
+                            return cb(error);
+                        }
+                        if (result.isMissing) {
+                            return cb(null, result);
+                        }
+                        if (config.outputFormat === "zip") {
+                            return cb(null, result.zipFile);
+                        }
 
-		            var outputFile = zipFile.replace(".zip", "");
-		            var zip = new AdmZip(zipFile);
-		            zip.extractAllTo(outputFile, true);
-                	return cb(null, outputFile);
+                        result.outputFile = result.zipFile.replace(".zip", "");
+                        var zip = new AdmZip(result.zipFile);
+                        zip.extractAllTo(result.outputFile, true);
+                        fs.unlink(result.zipFile, function(error) {
+                            if (error) {
+                                return cb(error);
+                            }
+                            return cb(null, result);
+                        })
+                    });
+                }, function(error, result) {
+                    if (error) {
+                        return cb(error);
+                    }
+                    return cb(null, result);
                 });
-            }, cb);
+            }
         });
     });
-}
+};
 
 module.exports = crawler;

@@ -4,13 +4,13 @@
   "description": "Manga downloader using starkana.com.",
   "main": "index.js",
   "dependencies": {
+    "adm-zip": "^0.4.4",
     "async": "^0.9.0",
-    "follow-redirects": "^0.0.3",
     "commander": "^2.6.0",
+    "follow-redirects": "^0.0.3",
     "jetty": "^0.2.1",
-    "cheerio": "^0.18.0",
-    "mkdirp": "^0.5.0",
-    "charm": "^1.0.0"
+    "jsdom": "^3.1.0",
+    "mkdirp": "^0.5.0"
   },
   "devDependencies": {},
   "scripts": {
