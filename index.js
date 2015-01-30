@@ -79,7 +79,8 @@ crawler.createJob = function(jobRequest) {
         return {
             series: jobRequest.series,
             chapters: [minChapter],
-            untilLast: true
+            untilLast: true,
+            url: jobRequest.url
         };
     }
 
@@ -93,7 +94,8 @@ crawler.createJob = function(jobRequest) {
     }
     return {
         series: jobRequest.series,
-        chapters: listChapters(minChapter, maxChapter)
+        chapters: listChapters(minChapter, maxChapter),
+        url: jobRequest.url
     };
 };
 
@@ -144,7 +146,7 @@ crawler.runJob = function(config, job, cb) {
             return cb(error);
         }
         jsdom.env({
-            url: crawler.getPageUrl(job.series),
+            url: job.url || crawler.getPageUrl(job.series),
             scripts: ["http://code.jquery.com/jquery.js"],
             done: function(errors, window) {
                 if (errors) {
