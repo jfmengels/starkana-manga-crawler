@@ -23,11 +23,14 @@ function findChapterLink($, chapter) {
 function clean(results, cb) {
     var dirs = results
         .filter(function(item) {
-            return !item.isMissing;
+            return !item.isMissing && item.outputFile;
         })
         .map(function(item) {
             return item.outputFile;
         });
+    if (dirs.length === 0) {
+        return cb();
+    }
     fileLister.listFiles(dirs, function(error, list) {
         if (error) {
             return cb(error);
@@ -129,15 +132,21 @@ crawler.downloadChapter = function($, config, job, chapter, cb) {
     });
 };
 
-crawler.getPageUrl = function(series) {
+crawler.getPageUrl = function(job) {
+    var baseUrl = "http://starkana.jp/manga/";
+    if (job.url) {
+        return baseUrl + job.url;
+    }
+
     // Starkana separates series based on the first character in their name.
     // On odd names (starting with number, dots, etc.), that category will be "0".
-    var firstChar = series.charAt(0);
+    var series = job.series,
+        firstChar = series.charAt(0);
     if (!firstChar.match(/[a-z]/i)) {
         firstChar = "0";
     }
     // Url example: "http://starkana.jp/manga/O/One_Piece" for One Piece
-    return "http://starkana.jp/manga/" + firstChar + "/" + series.replace(/\s/g, "_");
+    return baseUrl + firstChar + "/" + series.replace(/\s/g, "_");
 };
 
 crawler.runJob = function(config, job, cb) {
@@ -146,7 +155,7 @@ crawler.runJob = function(config, job, cb) {
             return cb(error);
         }
         jsdom.env({
-            url: job.url || crawler.getPageUrl(job.series),
+            url: crawler.getPageUrl(job),
             scripts: ["http://code.jquery.com/jquery.js"],
             done: function(errors, window) {
                 if (errors) {
