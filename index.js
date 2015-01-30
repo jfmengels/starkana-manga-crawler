@@ -21,9 +21,13 @@ function findChapterLink($, chapter) {
 }
 
 function clean(results, cb) {
-    var dirs = results.map(function(item) {
-        return item.outputFile;
-    });
+    var dirs = results
+        .filter(function(item) {
+            return !item.isMissing;
+        })
+        .map(function(item) {
+            return item.outputFile;
+        });
     fileLister.listFiles(dirs, function(error, list) {
         if (error) {
             return cb(error);
@@ -51,6 +55,22 @@ function extractZip(zipFile, outputFile, cb) {
     fs.unlink(zipFile, cb);
 }
 
+function findLatestChapterNumber($) {
+    var element = $("#inner_page td:contains('chapter')").first(),
+        delimiter = "chapter";
+
+    if (!element.length) {
+        return null;
+    }
+    var text = element.text().trim();
+    text = text.substring(text.indexOf(delimiter) + delimiter.length + 1);
+    return parseInt(text);
+}
+
+
+
+
+
 crawler.createJob = function(jobRequest) {
     var minChapter = jobRequest.chapter,
         maxChapter = jobRequest.maxChapter;
@@ -58,8 +78,8 @@ crawler.createJob = function(jobRequest) {
     if (jobRequest.untilLast) {
         return {
             series: jobRequest.series,
-            untilLast: true,
-            chapters: [minChapter]
+            chapters: [minChapter],
+            untilLast: true
         };
     }
 
@@ -81,7 +101,7 @@ crawler.downloadChapter = function($, config, job, chapter, cb) {
     var url = findChapterLink($, chapter),
         result = {
             series: job.series,
-            chapter: job.chapter,
+            chapter: chapter,
             zipFile: path.resolve(config.outputDirectory, job.series, job.series + " " + chapter + ".zip")
         };
 
@@ -128,13 +148,13 @@ crawler.runJob = function(config, job, cb) {
             scripts: ["http://code.jquery.com/jquery.js"],
             done: function(errors, window) {
                 if (errors) {
-                    return cb(errors.join(""));
+                    return cb(errors.join("\n"));
                 }
                 var $ = window.$,
                     results = [];
 
                 if (job.untilLast) {
-                    job.chapters = listChapters(job.chapters[0], crawler.findLatestChapterNumber($));
+                    job.chapters = listChapters(job.chapters[0], findLatestChapterNumber($));
                 }
 
                 async.eachLimit(job.chapters, 5, function(chapter, cb) {
@@ -145,6 +165,7 @@ crawler.runJob = function(config, job, cb) {
                         results.push(result);
                         return cb();
                     }
+
                     crawler.downloadChapter($, config, job, chapter, function(error, result) {
                         if (error) {
                             return callback(error);
@@ -152,10 +173,10 @@ crawler.runJob = function(config, job, cb) {
                         if (result.isMissing || config.outputFormat === "zip") {
                             return callback(null, result);
                         }
-                        
+
                         result.outputFile = result.zipFile.replace(".zip", "");
                         extractZip(result.zipFile, result.outputFile, function(error) {
-                            if(error) {
+                            if (error) {
                                 return callback(error);
                             }
                             return callback(null, result);
@@ -177,7 +198,7 @@ crawler.runJob = function(config, job, cb) {
     });
 };
 
-function findLatestChapterNumber(series, cb) {
+crawler.findLatestChapterNumber = function(series, cb) {
     jsdom.env({
         url: crawler.getPageUrl(series),
         scripts: ["http://code.jquery.com/jquery.js"],
@@ -185,21 +206,9 @@ function findLatestChapterNumber(series, cb) {
             if (errors) {
                 return cb(errors.join(""));
             }
-            return cb(null, crawler.findLatestChapterNumber(window.$));
+            return cb(null, findLatestChapterNumber(window.$));
         }
     });
-};
-
-crawler.findLatestChapterNumber = function($) {
-    var element = $("#inner_page td:contains('chapter')").first(),
-        delimiter = "chapter";
-
-    if (!element.length) {
-        return null;
-    }
-    var text = element.text().trim();
-    text = text.substring(text.indexOf(delimiter) + delimiter.length + 1);
-    return parseInt(text);
 };
 
 module.exports = crawler;
