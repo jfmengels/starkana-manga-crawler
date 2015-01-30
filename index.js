@@ -1,20 +1,15 @@
 var fs = require("fs");
 var path = require("path");
-var async = require("async");
 var http = require("follow-redirects").http;
-var mkdirp = require("mkdirp");
+var async = require("async");
 var jsdom = require("jsdom");
+var mkdirp = require("mkdirp");
 var AdmZip = require("adm-zip");
 
 var crawler = {};
 
 function findChapterLink($, chapter) {
-    var element =
-        $("#inner_page td:contains('chapter " + chapter + "')").next().children("a");
-        // $("#inner_page td a.download-link[href$='/" + chapter + "']") // Find link to the wanted chapter's page (only way to recognize it)
-        // .closest('td') // Go back to 
-        // .next()
-        // .children("a");
+    var element = $("#inner_page td:contains('chapter " + chapter + "')").next().children("a");
 
     if (!element.length) {
         return null;
