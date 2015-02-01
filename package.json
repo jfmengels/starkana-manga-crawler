@@ -6,7 +6,6 @@
   "dependencies": {
     "adm-zip": "^0.4.4",
     "async": "^0.9.0",
-    "checksum": "^0.1.1",
     "commander": "^2.6.0",
     "follow-redirects": "^0.0.3",
     "jsdom": "^3.1.0",
