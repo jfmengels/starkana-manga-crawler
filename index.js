@@ -36,6 +36,9 @@ function clean(results, cb) {
             return cb(error);
         }
         cleaner.findDuplicatesAndCredits(list, function(error, filesToRemove) {
+            if (error) {
+                return cb(error);
+            }
             async.each(filesToRemove, fs.unlink, cb);
         });
     });
@@ -149,7 +152,16 @@ crawler.getPageUrl = function(job) {
     return baseUrl + firstChar + "/" + series.replace(/\s/g, "_");
 };
 
-crawler.runJob = function(config, job, cb) {
+crawler.runJob = function(config, job, cb, progressCb) {
+    if (!progressCb) {
+        progressCb = function() {};
+    }
+    progressCb({
+        action: "check",
+        target: "series",
+        type: "start",
+        series: job.series
+    });
     mkdirp(path.resolve(config.outputDirectory, job.series), function(error) {
         if (error) {
             return cb(error);
@@ -168,6 +180,16 @@ crawler.runJob = function(config, job, cb) {
                     job.chapters = listChapters(job.chapters[0], findLatestChapterNumber($));
                 }
 
+                if (job.chapters.length === 0) {
+                    return cb(null, []);
+                }
+
+                progressCb({
+                    action: "download",
+                    target: "series",
+                    type: "start",
+                    series: job.series
+                });
                 async.eachLimit(job.chapters, 5, function(chapter, cb) {
                     function callback(error, result) {
                         if (error) {
@@ -177,16 +199,34 @@ crawler.runJob = function(config, job, cb) {
                         return cb();
                     }
 
+                    progressCb({
+                        action: "download",
+                        target: "chapter",
+                        type: "start",
+                        series: job.series,
+                        chapter: chapter,
+                    });
                     crawler.downloadChapter($, config, job, chapter, function(error, result) {
+                        function endProgress() {
+                            progressCb({
+                                action: "download",
+                                target: "chapter",
+                                type: "end",
+                                series: job.series,
+                                chapter: chapter,
+                            });
+                        }
                         if (error) {
                             return callback(error);
                         }
                         if (result.isMissing || config.outputFormat === "zip") {
+                            endProgress();
                             return callback(null, result);
                         }
 
                         result.outputFile = result.zipFile.replace(".zip", "");
                         extractZip(result.zipFile, result.outputFile, function(error) {
+                            endProgress();
                             if (error) {
                                 return callback(error);
                             }
@@ -197,10 +237,28 @@ crawler.runJob = function(config, job, cb) {
                     if (error) {
                         return cb(error);
                     }
+                    progressCb({
+                        action: "download",
+                        target: "series",
+                        type: "end",
+                        series: job.series
+                    });
                     if (!config.clean) {
                         return cb(null, results);
                     }
+                    progressCb({
+                        action: "cleanup",
+                        target: "series",
+                        type: "start",
+                        series: job.series
+                    });
                     return clean(results, function(error) {
+                        progressCb({
+                            action: "cleanup",
+                            target: "series",
+                            type: "end",
+                            series: job.series
+                        });
                         return cb(error, results);
                     });
                 });
