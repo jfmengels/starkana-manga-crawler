@@ -10,14 +10,22 @@ var cleaner = require("../cleaner.js");
 
 var fileLister = require("file-lister");
 
-fileLister.listFiles(process.argv[2], function(error, list) {
+var dirArgs = process.argv.slice(2, process.argv.length);
+async.map(dirArgs, fileLister.listFiles, function(error, lists) {
     if (error) {
-        return console.log(error);
+        return console.error(error);
     }
+    var list = lists.reduce(function(a, b) {
+        return a.concat(b);
+    }, []);
+
     cleaner.findDuplicatesAndCredits(list, function(error, filesToRemove) {
+        if (error) {
+            return console.error(error);
+        }
         async.each(filesToRemove, fs.unlink, function(error) {
             if (error) {
-                console.log(error);
+                console.error(error);
             }
         });
     });

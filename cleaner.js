@@ -28,15 +28,14 @@ cleaner.isCredits = function(fileName, cb) {
     var credits = getCreditsChecksum();
     fs.readFile(fileName, function(error, data) {
         if (error) {
-            return cb(error);
+            // Could not open file, ignore it.
+            return cb(null, false);
         }
         return cb(null, cleaner.compute(data) === credits);
     });
 };
 
-var registeredFiles = {};
-var duplicates = {};
-cleaner.register = function(fileName, cb) {
+cleaner.register = function(registeredFiles, duplicates, fileName, cb) {
     fs.readFile(fileName, function(error, sum) {
         if (error) {
             return cb(error);
@@ -51,7 +50,7 @@ cleaner.register = function(fileName, cb) {
     });
 };
 
-cleaner.getDuplicateFiles = function() {
+cleaner.getDuplicateFiles = function(duplicates) {
     var dup = [];
     for (var key in duplicates) {
         if (duplicates[key].length > 1) {
@@ -62,23 +61,25 @@ cleaner.getDuplicateFiles = function() {
 };
 
 cleaner.findDuplicatesAndCredits = function(files, cb) {
-    var results = [];
-    async.each(files, function(file, cb) {
+    var registeredFiles = {},
+        duplicates = {},
+        credits = [];
+    async.eachLimit(files, 50, function(file, cb) {
         cleaner.isCredits(file, function(error, isCredits) {
             if (error) {
                 return cb(error);
             }
             if (isCredits) {
-                results.push(file);
+                credits.push(file);
                 return cb();
             }
-            cleaner.register(file, cb);
+            cleaner.register(registeredFiles, duplicates, file, cb);
         });
     }, function(error) {
         if (error) {
             return cb(error);
         }
-        return cb(null, results.concat(cleaner.getDuplicateFiles()));
+        return cb(null, credits.concat(cleaner.getDuplicateFiles(duplicates)));
     });
 };
 
