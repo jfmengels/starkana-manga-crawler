@@ -127,7 +127,7 @@ crawler.downloadChapter = function($, config, job, chapter, cb) {
 
     var file = fs.createWriteStream(result.zipFile);
 
-    http.get(url, function(res) {
+    http.get(link.url, function(res) {
         var alreadyCalled = false;
 
         function callback(error) {
