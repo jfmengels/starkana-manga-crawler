@@ -5,6 +5,7 @@ var async = require("async");
 var jsdom = require("jsdom");
 var mkdirp = require("mkdirp");
 var AdmZip = require("adm-zip");
+var extend = require("extend");
 var fileLister = require("file-lister");
 
 var cleaner = require("./cleaner");
@@ -12,12 +13,18 @@ var cleaner = require("./cleaner");
 var crawler = {};
 
 function findChapterLink($, chapter) {
-    var element = $("#inner_page td:contains('chapter " + chapter + "')").next().children("a");
+    var result = {},
+        element = $("#inner_page td:contains('chapter " + chapter + "')").next().children("a");
 
     if (!element.length) {
-        return null;
+        result.isMissing = true;
+        if($("#inner_page span").first().text() === "Removed") {
+            result.isRemoved = true;
+        }
+        return result;
     }
-    return element.attr("href");
+    result.url = element.attr("href");
+    return result;
 }
 
 function clean(results, cb) {
@@ -106,15 +113,15 @@ crawler.createJob = function(jobRequest) {
 };
 
 crawler.downloadChapter = function($, config, job, chapter, cb) {
-    var url = findChapterLink($, chapter),
+    var link = findChapterLink($, chapter),
         result = {
             series: job.series,
             chapter: chapter,
             zipFile: path.resolve(config.outputDirectory, job.series, job.series + " " + chapter + ".zip")
         };
 
-    if (!url) {
-        result.isMissing = true;
+    if (!link.url) {
+        extend(result, link);
         return cb(null, result);
     }
 
@@ -149,7 +156,10 @@ crawler.getPageUrl = function(job) {
         firstChar = "0";
     }
     // Url example: "http://starkana.jp/manga/O/One_Piece" for One Piece
-    return baseUrl + firstChar + "/" + series.replace(/\s/g, "_");
+    var seriesName = series
+        .replace(/\s/g, "_")
+        .replace(/'/g, "");
+    return baseUrl + firstChar + "/" + seriesName;
 };
 
 crawler.runJob = function(config, job, cb, progressCb) {
@@ -218,6 +228,23 @@ crawler.runJob = function(config, job, cb, progressCb) {
                         }
                         if (error) {
                             return callback(error);
+                        }
+                        if (result.isRemoved) {
+                            progressCb({
+                                action: "download",
+                                target: "chapter",
+                                type: "removed",
+                                series: job.series,
+                                chapter: chapter,
+                            });
+                        } else if (result.isMissing) {
+                            progressCb({
+                                action: "download",
+                                target: "chapter",
+                                type: "missing",
+                                series: job.series,
+                                chapter: chapter,
+                            });
                         }
                         if (result.isMissing || config.outputFormat === "zip") {
                             endProgress();

@@ -88,7 +88,9 @@ var jobs = [
 
 async.eachLimit(jobs, 5,
     function(job, cb) {
-        crawler.runJob(config, job, cb);
+        crawler.runJob(config, job, cb, function(progress) {
+            console.log(progress.type + "\t" + progress.action + "\t" + progress.series + " " + (progress.chapter || ""));
+        });
     },
     gracefulEnd
 );
