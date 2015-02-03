@@ -18,7 +18,7 @@ function findChapterLink($, chapter) {
 
     if (!element.length) {
         result.isMissing = true;
-        if($("#inner_page span").first().text() === "Removed") {
+        if ($("#inner_page span").first().text() === "Removed") {
             result.isRemoved = true;
         }
         return result;
@@ -172,34 +172,34 @@ crawler.runJob = function(config, job, cb, progressCb) {
         type: "start",
         series: job.series
     });
-    mkdirp(path.resolve(config.outputDirectory, job.series), function(error) {
-        if (error) {
-            return cb(error);
-        }
-        jsdom.env({
-            url: crawler.getPageUrl(job),
-            scripts: ["http://code.jquery.com/jquery.js"],
-            done: function(errors, window) {
-                if (errors) {
-                    return cb(errors.join("\n"));
-                }
-                var $ = window.$,
-                    results = [];
+    jsdom.env({
+        url: crawler.getPageUrl(job),
+        scripts: ["http://code.jquery.com/jquery.js"],
+        done: function(errors, window) {
+            if (errors) {
+                return cb(errors.join("\n"));
+            }
+            var $ = window.$,
+                results = [];
 
-                if (job.untilLast) {
-                    job.chapters = listChapters(job.chapters[0], findLatestChapterNumber($));
-                }
+            if (job.untilLast) {
+                job.chapters = listChapters(job.chapters[0], findLatestChapterNumber($));
+            }
 
-                if (job.chapters.length === 0) {
-                    return cb(null, []);
-                }
+            if (job.chapters.length === 0) {
+                return cb(null, []);
+            }
 
-                progressCb({
-                    action: "download",
-                    target: "series",
-                    type: "start",
-                    series: job.series
-                });
+            progressCb({
+                action: "download",
+                target: "series",
+                type: "start",
+                series: job.series
+            });
+            mkdirp(path.resolve(config.outputDirectory, job.series), function(error) {
+                if (error) {
+                    return cb(error);
+                }
                 async.eachLimit(job.chapters, 5, function(chapter, cb) {
                     function callback(error, result) {
                         if (error) {
@@ -289,8 +289,8 @@ crawler.runJob = function(config, job, cb, progressCb) {
                         return cb(error, results);
                     });
                 });
-            }
-        });
+            });
+        }
     });
 };
 
