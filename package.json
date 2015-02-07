@@ -10,6 +10,7 @@
     "extend": "^2.0.0",
     "file-lister": "^1.0.0",
     "follow-redirects": "^0.0.3",
+    "javascript-natural-sort": "^0.7.1",
     "jsdom": "^3.1.0",
     "mkdirp": "^0.5.0"
   },

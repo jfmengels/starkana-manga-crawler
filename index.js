@@ -9,16 +9,17 @@ var extend = require("extend");
 var fileLister = require("file-lister");
 
 var cleaner = require("./cleaner");
+var renamer = require("./renamer");
 
 var crawler = {};
 
 function findChapterLink($, chapterItem) {
     var result = {};
-    if(chapterItem.url) {
+    if (chapterItem.url) {
         result.url = chapterItem.url;
         return result;
     }
-    var element = $("#inner_page td:contains('chapter " + chapter + "')").next().children("a");
+    var element = $("#inner_page td:contains('chapter " + chapterItem.chapter + "')").next().children("a");
 
     if (!element.length) {
         result.isMissing = true;
@@ -31,7 +32,7 @@ function findChapterLink($, chapterItem) {
     return result;
 }
 
-function clean(results, cb) {
+function clean(results, config, cb) {
     var dirs = results
         .filter(function(item) {
             return !item.isMissing && item.outputFile;
@@ -50,7 +51,17 @@ function clean(results, cb) {
             if (error) {
                 return cb(error);
             }
-            async.each(filesToRemove, fs.unlink, cb);
+            async.each(filesToRemove, fs.unlink, function(error) {
+                if (error) {
+                    return cb(error);
+                }
+                if (config.rename && config.outputFormat === "folder") {
+                    return renamer.renameFolders(dirs, {
+                        onlyNodedirs: true
+                    }, cb);
+                }
+                return cb();
+            });
         });
     });
 }
@@ -301,7 +312,7 @@ crawler.runJob = function(config, job, cb, progressCb) {
                         type: "start",
                         series: job.series
                     });
-                    return clean(results, function(error) {
+                    return clean(results, config, function(error) {
                         progressCb({
                             action: "cleanup",
                             target: "series",
