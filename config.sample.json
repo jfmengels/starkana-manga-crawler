@@ -1,5 +1,8 @@
 {
+	"readDirectory": ".",
     "outputDirectory": ".",
     "outputFormat": "folder",
-    "clean": false
+    "clean": false,
+    "rename": true,
+	"series": []
 }

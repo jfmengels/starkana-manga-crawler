@@ -21,6 +21,7 @@ program
     .option('-S, --save', 'Save settings so that they will automatically be reused on the next call.')
     .option('-f, --outputFormat [outputFormat]', 'Set how the downloaded content will be outputted: "folder" | "zip".')
     .option('-r, --clean', 'Remove starkana and scanlator team credits.')
+    .option('-R, --rename', 'Rename chapter files upon download.')
     .option('-u, --url [url]', 'Use url path instead of normal one. Should not contain shared path "starkana.com/manga".')
     .parse(process.argv);
 
@@ -41,10 +42,14 @@ if (!program.chapter) {
 
 var config = {},
     defaultConfig = {
+        readDirectory: ".",
         outputDirectory: ".",
-        outputFormat: "folder"
+        outputFormat: "folder",
+        clean: false,
+        rename: true,
+        series: []
     },
-    allowedOutputFormat = ["folder", "zip"];
+    allowedOutputFormats = ["folder", "zip"];
 
 try {
     var configData = fs.readFileSync(configFile);
@@ -56,7 +61,7 @@ if (program.outputDirectory) {
 }
 
 if (program.outputFormat) {
-    if (allowedOutputFormat.indexOf(program.outputFormat) === -1) {
+    if (allowedOutputFormats.indexOf(program.outputFormat) === -1) {
         gracefulEnd("Unknown output format.");
     }
     config.outputFormat = program.outputFormat;
@@ -64,6 +69,10 @@ if (program.outputFormat) {
 
 if (program.clean) {
     config.clean = program.clean;
+}
+
+if (program.rename) {
+    config.rename = program.rename;
 }
 
 // Filling missing config fields
