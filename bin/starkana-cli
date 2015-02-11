@@ -7,6 +7,7 @@ var async = require("async");
 var extend = require('extend');
 var program = require('commander');
 
+var cleaner = require("../cleaner.js");
 var crawler = require("../index.js");
 
 var allowedOutputFormats = ["folder", "zip"],
@@ -28,7 +29,8 @@ function init(program, options) {
             readDirectory: ".",
             outputDirectory: ".",
             outputFormat: "folder",
-            clean: false,
+            cleanStarkanaCredits: true,
+            cleanDuplicates: false,
             rename: true,
             series: []
         };
@@ -50,6 +52,27 @@ function init(program, options) {
     //     fs.writeFileSync("./config.json", JSON.stringify(config, null, 4));
     // }
     return config;
+}
+
+function progressPrinter(progress) {
+    console.log(progress.type + "\t" + progress.action + "\t" + progress.series + " " + (progress.chapter || ""));
+}
+
+function asyncJobRunner(config) {
+    return function(job, cb) {
+        crawler.runJob(config, job, cb, progressPrinter);
+    };
+}
+
+function detailCleanOperation(job, data) {
+    var output = [];
+    if (job.cleanStarkanaCredits) {
+        output.push(data.creditsRemoved + ' credit');
+    }
+    if (job.cleanDuplicates) {
+        output.push(data.duplicatesRemoved + ' duplicate');
+    }
+    console.log('Removed ' + output.join(' and ') + ' files.');
 }
 
 program
@@ -84,22 +107,43 @@ program
                     url: config.url
                 })
             ];
-        console.log(JSON.stringify(jobs, null, 4));
 
-        async.eachLimit(jobs, 5,
-            function(job, cb) {
-                crawler.runJob(config, job, cb, function(progress) {
-                    console.log(progress.type + "\t" + progress.action + "\t" + progress.series + " " + (progress.chapter || ""));
-                });
-            },
-            gracefulEnd
-        );
+        async.eachLimit(jobs, 5, asyncJobRunner(config), gracefulEnd);
 
     }).on('--help', function() {
         console.log('  Examples:');
         console.log();
         console.log('    $ starkana-cli download "One Piece" 42');
         console.log('    $ starkana-cli dl Naruto 690');
+        console.log();
+    });
+
+program
+    .command('clean <folders...>')
+    .alias('cl')
+    .description('Downloads specific chapters from a given series.')
+    .option('-s, --starkanacredits', 'Remove Starkana credits')
+    .option('-d, --duplicate', 'Remove duplicate files in all of the downloaded chapters. Used to remove scanlation credits.')
+    .action(function(folders, options) {
+        if (!folders || folders.length === 0) {
+            gracefulEnd("Missing folder argument.");
+        }
+
+        var job = {
+            cleanStarkanaCredits: options.starkanacredits || false,
+            cleanDuplicates: options.duplicate || false
+        };
+
+        cleaner.cleanFolders(folders, job, function(error, data) {
+            if (error) {
+                return gracefulEnd(error);
+            }
+            detailCleanOperation(job, data);
+        });
+    }).on('--help', function() {
+        console.log('  Examples:');
+        console.log();
+        console.log('    $ starkana-cli cl /my/folder -sd');
         console.log();
     });
 

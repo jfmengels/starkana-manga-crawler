@@ -2,7 +2,8 @@
 	"readDirectory": ".",
     "outputDirectory": ".",
     "outputFormat": "folder",
-    "clean": false,
+    "cleanStarkanaCredits": true,
+    "cleanDuplicates": false,
     "rename": true,
 	"series": []
 }

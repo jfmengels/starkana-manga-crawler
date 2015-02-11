@@ -1,12 +1,12 @@
 var fs = require("fs");
-var crypto = require("crypto");
 var async = require("async");
+var crypto = require("crypto");
+var fileLister = require("file-lister");
 
 var cleaner = {};
 
-var creditsSampleFileName = "resources/starkana-credits.jpg";
-
-var _creditsCheckSum;
+var creditsSampleFileName = "resources/starkana-credits.jpg",
+    _creditsCheckSum;
 
 function getCreditsChecksum() {
     if (_creditsCheckSum) {
@@ -85,6 +85,72 @@ cleaner.findDuplicatesAndCredits = function(files, cb) {
             return cb(error);
         }
         return cb(null, credits.concat(cleaner.getDuplicateFiles(duplicates)));
+    });
+};
+
+cleaner.cleanFiles = function(files, job, cb) {
+    var creditsChecksum,
+        filesToRemove = [],
+        registeredFiles = {},
+        duplicates = {};
+
+    if (job.cleanStarkanaCredits) {
+        creditsChecksum = getCreditsChecksum();
+    }
+
+    async.each(files, function(file, cb) {
+        cleaner.computeFile(file, function(error, fileChecksum) {
+            if (error) {
+                return cb(error);
+            }
+            if (job.cleanStarkanaCredits && fileChecksum === creditsChecksum) {
+                filesToRemove.push(file);
+                return cb();
+            }
+
+            if (job.cleanDuplicates) {
+                cleaner.register(registeredFiles, duplicates, file, fileChecksum);
+            }
+            return cb();
+        });
+    }, function(error) {
+        if (error) {
+            return cb(error);
+        }
+
+        var result = {
+            creditsRemoved: filesToRemove.length,
+            duplicatesRemoved: 0
+        };
+
+        if (job.cleanDuplicates) {
+            var duplicateFiles = cleaner.getDuplicateFiles(duplicates);
+            result.duplicatesRemoved = duplicateFiles.length;
+            filesToRemove = filesToRemove.concat(duplicateFiles);
+        }
+
+        if (filesToRemove.length === 0) {
+            return cb(null, result);
+        }
+        async.each(filesToRemove, fs.unlink, function(error) {
+            if (error) {
+                return cb(error);
+            }
+            return cb(null, result);
+        });
+    });
+};
+
+cleaner.cleanFolders = function(folders, job, cb) {
+    async.map(folders, fileLister.listFiles, function(error, lists) {
+        if (error) {
+            return cb(error);
+        }
+        var files = lists.reduce(function(a, b) {
+            return a.concat(b);
+        }, []);
+
+        cleaner.cleanFiles(files, job, cb);
     });
 };
 
