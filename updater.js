@@ -30,20 +30,20 @@ updater.getCurrentMaxChapter = function(folder, series, cb) {
     });
 };
 
-updater.update = function(seriesFilter, config, cb, progressCb) {
-    var series = config.series;
+updater.update = function(filter, config, cb, progressCb) {
+    var series = config.subscriptions;
 
     // Filtering + adding series
-    if (seriesFilter.length > 0) {
+    if (filter.length > 0) {
         var seriesObject = utils.convertSeriesToObject(series);
 
         // Filtering out series in the subscriptions
         var subscriptions = series.filter(function(s) {
-            return seriesFilter.indexOf(s.name) > -1;
+            return filter.indexOf(s.name) > -1;
         });
 
         // Adding those in the filter that are not in the subscriptions
-        series = subscriptions.concat(seriesFilter
+        series = subscriptions.concat(filter
             .filter(function(s) {
             	return !seriesObject[s];
             })

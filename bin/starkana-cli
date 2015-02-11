@@ -11,7 +11,8 @@ var starkana = require("../index"),
     crawler = starkana.crawler,
     cleaner = starkana.cleaner,
     renamer = starkana.renamer,
-    updater = starkana.updater;
+    updater = starkana.updater,
+    subscriber = starkana.subscriber;
 
 var allowedOutputFormats = ["folder", "zip"],
     baseConfigFile = "./config.json";
@@ -22,6 +23,11 @@ function gracefulEnd(error) {
         process.exit(1);
     }
     process.exit(0);
+}
+
+function saveConfig(config) {
+    // TODO Fix, broken because of 
+    // fs.writeFileSync("./config.json", JSON.stringify(config, null, 4));
 }
 
 function init(program, options) {
@@ -48,10 +54,9 @@ function init(program, options) {
     }
 
     // Save config to file
-    // TODO Fix, broken because of 
-    // if (program.save) {
-    //     fs.writeFileSync("./config.json", JSON.stringify(config, null, 4));
-    // }
+    if (program.save) {
+        saveConfig(config);
+    }
     return config;
 }
 
@@ -202,6 +207,52 @@ var renameCommand = program
         examples([
             'rename /my/folder',
             'rn /my/folder /my/second/folder'
+        ]);
+    });
+
+program
+    .command('sub [series...]')
+    .description('List subscriptions or subscribe to series.')
+    .option('-d, --delete', 'Unsubscribe from series.')
+    .option('-u, --url <url>', 'Specify url for the given series (can only be used for one series).')
+    .action(function(series, options) {
+        var config = init(program, options),
+            action;
+
+        if (options.delete && series.length === 0) {
+            gracefulEnd("Missing series argument.");
+        }
+
+        // Listing subscriptions
+        if(series.length === 0) {
+            var subscriptions = config.subscriptions.map(function(s) {
+                if(s.url) {
+                    return s.name + " (at " + s.url + ")";
+                }
+                return s.name;
+            })
+            console.log(subscriptions.sort().join('\n'));
+            return;
+        }
+
+        if (config.delete) {
+            // Unsubscribing
+            subscriber.unsubscribe(series, config);
+            action = "Unsubscribed from";
+        } else {
+            // Subscribing
+            subscriber.subscribe(series, config, options.url);
+            action = "Subscribed to";
+        }
+        saveConfig(config);
+        console.log(action + " " + series.join(", ") + ".");
+
+    }).on('--help', function() {
+        examples([
+            'sub                        # Lists subscriptions',
+            'sub Naruto "One Piece"     # Subscribe to Naruto and One Piece',
+            'sub -d Naruto              # Unsubscribe from Naruto',
+            'sub Naruto -u N/Naruto     # Subscribe to Naruto, and use N/Naruto as the url'
         ]);
     });
 

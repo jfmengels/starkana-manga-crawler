@@ -5,5 +5,5 @@
     "cleanStarkanaCredits": true,
     "cleanDuplicates": false,
     "rename": true,
-	"series": []
+	"subscriptions": []
 }
