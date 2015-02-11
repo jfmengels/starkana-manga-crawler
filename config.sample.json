@@ -1,5 +1,5 @@
 {
-	"readDirectory": ".",
+	"readDirectories": [],
     "outputDirectory": ".",
     "outputFormat": "folder",
     "cleanStarkanaCredits": true,

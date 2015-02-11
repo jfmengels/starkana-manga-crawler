@@ -7,9 +7,11 @@ var async = require("async");
 var extend = require('extend');
 var program = require('commander');
 
-var cleaner = require("../cleaner.js");
-var crawler = require("../index.js");
-var renamer = require("../renamer");
+var starkana = require("../index"),
+    crawler = starkana.crawler,
+    cleaner = starkana.cleaner,
+    renamer = starkana.renamer,
+    updater = starkana.updater;
 
 var allowedOutputFormats = ["folder", "zip"],
     baseConfigFile = "./config.json";
@@ -27,7 +29,7 @@ function gracefulEnd(error) {
 function init(program, options) {
     var config = {},
         baseConfig = {
-            readDirectory: ".",
+            readDirectories: [],
             outputDirectory: ".",
             outputFormat: "folder",
             cleanStarkanaCredits: true,
@@ -104,7 +106,6 @@ var downloadCommand = program
     .alias('dl')
     .description('Downloads specific chapters from a given series.')
     .option('-l, --untilLast', 'Download until the last released chapter')
-    .option('-O, --outputDirectory <directory>', 'Setting: Directory in which the files will be downloaded.')
     .option('-f, --outputFormat <outputFormat>', 'Set how the downloaded content will be outputted: ' + allowedOutputFormats.join(' | ') + '.')
     .option('-u, --url <url>', 'Use url path instead of normal one. Should not contain shared path "starkana.com/manga".')
     .action(function(series, chapters, maxChapter, options) {
@@ -131,6 +132,25 @@ var downloadCommand = program
         examples([
             'download "One Piece" 42',
             'dl Naruto 690'
+        ]);
+    });
+
+var updateCommand = program
+    .command('update [series...]')
+    .alias('up')
+    .description('Update the series you subscribed to.')
+    .option('-r, --readDirectories <directories>', 'Directories in which to look into to find current progress (not including the outputDirectory). Separate by \';\'.')
+    .option('-f, --force', 'When no chapters are found for a series, nothing will get downloaded unless forced.')
+    .action(function(series, options) {
+        if (options.readDirectories) {
+            options.readDirectories = options.readDirectories.split(';');
+        }
+        var config = init(program, options);
+        updater.update(series, config, gracefulEnd, progressPrinter);
+    }).on('--help', function() {
+        examples([
+            'update',
+            'up Bleach "One Piece" -r /look/in/this/folder;/and/in/this/one'
         ]);
     });
 
@@ -188,11 +208,16 @@ var renameCommand = program
     });
 
 // Adding options common to multiple commands
-[downloadCommand, cleanCommand].forEach(function(command) {
+[downloadCommand, updateCommand, cleanCommand].forEach(function(command) {
     command
         .option('-s, --cleanStarkanaCredits', 'Remove Starkana credits')
         .option('-d, --cleanDuplicates', 'Remove duplicate files in all of the downloaded chapters (used to remove scanlation credits).')
         .option('-R, --rename', 'Rename folders after operation.');
+});
+
+[downloadCommand, updateCommand].forEach(function(command) {
+    command
+        .option('-O, --outputDirectory <directory>', 'Directory in which the files will be downloaded.');
 });
 
 program.parse(process.argv);
