@@ -16,7 +16,7 @@ subscriber.subscribe = function(series, config, url) {
 
 subscriber.unsubscribe = function(series, config) {
     config.subscriptions = config.subscriptions.filter(function(sub) {
-        return series.indexOf(sub.name) > -1;
+        return series.indexOf(sub.name) === -1;
     });
 };
 

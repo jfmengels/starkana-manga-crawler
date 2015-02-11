@@ -7,15 +7,18 @@ var async = require("async");
 var extend = require('extend');
 var program = require('commander');
 
-var starkana = require("../index"),
+var utils = require("../utils"),
+    starkana = require("../index"),
     crawler = starkana.crawler,
     cleaner = starkana.cleaner,
     renamer = starkana.renamer,
     updater = starkana.updater,
     subscriber = starkana.subscriber;
 
+
 var allowedOutputFormats = ["folder", "zip"],
-    baseConfigFile = "./config.json";
+    baseConfigFile = "./config.json",
+    configKeys = [];
 
 function gracefulEnd(error) {
     if (error) {
@@ -26,8 +29,7 @@ function gracefulEnd(error) {
 }
 
 function saveConfig(config) {
-    // TODO Fix, broken because of 
-    // fs.writeFileSync("./config.json", JSON.stringify(config, null, 4));
+    fs.writeFileSync(baseConfigFile, JSON.stringify(utils.pick(config, configKeys), null, 4));
 }
 
 function init(program, options) {
@@ -39,8 +41,10 @@ function init(program, options) {
             cleanStarkanaCredits: true,
             cleanDuplicates: false,
             rename: true,
-            series: []
+            subscriptions: []
         };
+
+    configKeys = Object.keys(baseConfig);
 
     try {
         var configData = fs.readFileSync(program.config || baseConfigFile);
@@ -223,10 +227,9 @@ program
             gracefulEnd("Missing series argument.");
         }
 
-        // Listing subscriptions
-        if(series.length === 0) {
+        if (series.length === 0) { // Listing subscriptions
             var subscriptions = config.subscriptions.map(function(s) {
-                if(s.url) {
+                if (s.url) {
                     return s.name + " (at " + s.url + ")";
                 }
                 return s.name;
@@ -235,18 +238,25 @@ program
             return;
         }
 
-        if (config.delete) {
-            // Unsubscribing
+        if (config.delete) { // Unsubscribing
             subscriber.unsubscribe(series, config);
             action = "Unsubscribed from";
-        } else {
-            // Subscribing
+        } else { // Subscribing
             subscriber.subscribe(series, config, options.url);
+            config.subscriptions = config.subscriptions.sort(function(a, b) {
+                if (a.name < b.name) {
+                    return -1;
+                }
+                if (a.name > b.name) {
+                    return 1;
+                }
+                return 0;
+            })
             action = "Subscribed to";
         }
         saveConfig(config);
         console.log(action + " " + series.join(", ") + ".");
-
+        gracefulEnd();
     }).on('--help', function() {
         examples([
             'sub                        # Lists subscriptions',
