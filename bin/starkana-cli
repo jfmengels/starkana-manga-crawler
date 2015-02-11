@@ -17,7 +17,7 @@ var utils = require("../utils"),
 
 
 var allowedOutputFormats = ["folder", "zip"],
-    baseConfigFile = "./config.json",
+    configFile = "./config.json",
     configKeys = [];
 
 function gracefulEnd(error) {
@@ -29,7 +29,7 @@ function gracefulEnd(error) {
 }
 
 function saveConfig(config) {
-    fs.writeFileSync(baseConfigFile, JSON.stringify(utils.pick(config, configKeys), null, 4));
+    fs.writeFileSync(configFile, JSON.stringify(utils.pick(config, configKeys), null, 4));
 }
 
 function init(program, options) {
@@ -45,9 +45,10 @@ function init(program, options) {
         };
 
     configKeys = Object.keys(baseConfig);
+    configFile = program.config || configFile;
 
     try {
-        var configData = fs.readFileSync(program.config || baseConfigFile);
+        var configData = fs.readFileSync();
         config = JSON.parse(configData);
     } catch (e) {}
 
