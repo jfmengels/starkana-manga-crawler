@@ -79,20 +79,40 @@ function listChapters(start, end) {
 }
 
 function addChaptersUntilLast(job, $) {
-    console.log($("#inner_page td:contains('chapter " + job.currentChapter + "')").closest('table').prevUntil('.c_h1').find('tr'))
-    job.chapters = $("#inner_page td:contains('chapter " + job.currentChapter + "')").closest('table').prevUntil('.c_h1').find('tr')
-        .map(function() {
-            var delimiter = 'chapter ',
-                chapterText = $(this).find("td a.download-link").text();
+    var currentChapterSelector = $("#inner_page td:contains('chapter " + job.currentChapter + "')"),
+        delimiter = 'chapter ';
 
-            chapterText = chapterText.slice(chapterText.indexOf(delimiter) + delimiter.length);
+    if(job.currentChapter < 1) {
+        currentChapterSelector = $("#inner_page td:contains('chapter ')").last();
+    }
+
+    function chapterNumber(element) {
+        var chapterText = element.text();
+        return parseFloat(chapterText.slice(chapterText.indexOf(delimiter) + delimiter.length));
+    }
+
+    job.chapters = currentChapterSelector.closest('table').prevUntil('.c_h1').find('tr')
+        .map(function() {
             return {
-                chapter: parseFloat(chapterText),
+                chapter: chapterNumber($(this).find("td a.download-link")),
                 url: $(this).find("td a.odi").attr("href")
             };
         })
         .get()
         .reverse();
+
+    // Add first chapter if there are no chapters yet
+    if(job.currentChapter < 1) {
+        var firstChapterElement = currentChapterSelector.next().children("a"),
+            chapterText = currentChapterSelector.text();
+
+        chapterText = chapterText.slice(chapterText.indexOf(delimiter) + delimiter.length);
+        
+        job.chapters.unshift({
+            chapter: chapterNumber(currentChapterSelector),
+            url: firstChapterElement.attr("href")
+        });
+    }
 }
 
 function extractZip(zipFile, outputFile, cb) {
@@ -219,7 +239,6 @@ crawler.runJob = function(config, job, cb, progressCb) {
             if (job.untilLast) {
                 addChaptersUntilLast(job, $);
             }
-            console.log(job.chapters)
 
             if (job.chapters.length === 0) {
                 return cb(null, []);
