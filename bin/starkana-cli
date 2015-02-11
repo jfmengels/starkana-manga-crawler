@@ -1,0 +1,117 @@
+#!/usr/bin/env node
+
+'use strict';
+
+var fs = require("fs");
+var async = require("async");
+var extend = require('extend');
+var program = require('commander');
+
+var crawler = require("../index.js");
+
+var allowedOutputFormats = ["folder", "zip"],
+    baseConfigFile = "./config.json";
+
+function gracefulEnd(error) {
+    if (error) {
+        console.error();
+        console.error("  error: " + error);
+        console.error();
+        process.exit(1);
+    }
+    process.exit(0);
+}
+
+function init(program, options) {
+    var config = {},
+        baseConfig = {
+            readDirectory: ".",
+            outputDirectory: ".",
+            outputFormat: "folder",
+            clean: false,
+            rename: true,
+            series: []
+        };
+
+    try {
+        var configData = fs.readFileSync(program.config || baseConfigFile);
+        config = JSON.parse(configData);
+    } catch (e) {}
+
+    config = extend(baseConfig, config, options);
+
+    if (allowedOutputFormats.indexOf(config.outputFormat) === -1) {
+        gracefulEnd("unsupported outputFormat: " + config.outputFormat);
+    }
+
+    // Save config to file
+    // TODO Fix, broken because of 
+    // if (program.save) {
+    //     fs.writeFileSync("./config.json", JSON.stringify(config, null, 4));
+    // }
+    return config;
+}
+
+program
+    .version('1.0.0')
+    .option("--config <config>", "Set configuration file to use.")
+    .option('-S, --save', 'Save settings to the default config file so that they will automatically be reused on the next call.');
+
+program
+    .command('download <series> <chapters> [maxChapter]')
+    .alias('dl')
+    .description('Downloads specific chapters from a given series.')
+    .option('-l, --untilLast', 'Download until the last released chapter')
+    .option('-O, --outputDirectory <directory>', 'Setting: Directory in which the files will be downloaded.')
+    .option('-f, --outputFormat <outputFormat>', 'Set how the downloaded content will be outputted: ' + allowedOutputFormats.join(' | ') + '.')
+    .option('-r, --clean', 'Remove starkana and scanlator team credits.')
+    .option('-R, --rename', 'Rename chapter files upon download.')
+    .option('-u, --url <url>', 'Use url path instead of normal one. Should not contain shared path "starkana.com/manga".')
+    .action(function(series, chapters, maxChapter, options) {
+        if (!series) {
+            gracefulEnd("Missing series argument.");
+        }
+        if (!chapters) {
+            gracefulEnd("Missing chapters argument.");
+        }
+        var config = init(program, options),
+            jobs = [
+                crawler.createJob({
+                    series: series,
+                    chapter: parseFloat(chapters),
+                    maxChapter: parseFloat(maxChapter),
+                    untilLast: config.untilLast,
+                    url: config.url
+                })
+            ];
+        console.log(JSON.stringify(jobs, null, 4));
+
+        async.eachLimit(jobs, 5,
+            function(job, cb) {
+                crawler.runJob(config, job, cb, function(progress) {
+                    console.log(progress.type + "\t" + progress.action + "\t" + progress.series + " " + (progress.chapter || ""));
+                });
+            },
+            gracefulEnd
+        );
+
+    }).on('--help', function() {
+        console.log('  Examples:');
+        console.log();
+        console.log('    $ starkana-cli download "One Piece" 42');
+        console.log('    $ starkana-cli dl Naruto 690');
+        console.log();
+    });
+
+program
+    .command('*')
+    .action(function() {
+        program.help();
+    });
+
+program.parse(process.argv);
+
+
+if (!program.args.length) {
+    program.help();
+}
