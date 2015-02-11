@@ -98,7 +98,7 @@ cleaner.cleanFiles = function(files, job, cb) {
         creditsChecksum = getCreditsChecksum();
     }
 
-    async.each(files, function(file, cb) {
+    async.eachLimit(files, 50, function(file, cb) {
         cleaner.computeFile(file, function(error, fileChecksum) {
             if (error) {
                 return cb(error);
