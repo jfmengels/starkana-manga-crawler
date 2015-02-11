@@ -18,9 +18,7 @@ var allowedOutputFormats = ["folder", "zip"],
 
 function gracefulEnd(error) {
     if (error) {
-        console.error();
-        console.error("  error: " + error);
-        console.error();
+        console.error("\n  error: " + error + "\n");
         process.exit(1);
     }
     process.exit(0);
