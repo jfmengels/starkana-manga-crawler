@@ -9,6 +9,7 @@ var program = require('commander');
 
 var cleaner = require("../cleaner.js");
 var crawler = require("../index.js");
+var renamer = require("../renamer");
 
 var allowedOutputFormats = ["folder", "zip"],
     baseConfigFile = "./config.json";
@@ -66,6 +67,9 @@ function asyncJobRunner(config) {
 
 function detailCleanOperation(job, data) {
     var output = [];
+    if (data.creditsRemoved === 0 && data.duplicatesRemoved === 0) {
+        return console.log("Nothing to clean.");
+    }
     if (job.cleanStarkanaCredits) {
         output.push(data.creditsRemoved + ' credit');
     }
@@ -75,20 +79,33 @@ function detailCleanOperation(job, data) {
     console.log('Removed ' + output.join(' and ') + ' files.');
 }
 
+function examples(exampleArray) {
+    var commandName = program._name;
+    console.log('  Examples:');
+    console.log();
+    exampleArray.forEach(function(example) {
+        console.log('    $ ' + commandName + ' ' + example);
+    });
+    console.log();
+}
+
+function rename(folders, config, cb) {
+    renamer.renameFolders(folders, config, cb);
+}
+
+
 program
     .version('1.0.0')
     .option("--config <config>", "Set configuration file to use.")
     .option('-S, --save', 'Save settings to the default config file so that they will automatically be reused on the next call.');
 
-program
+var downloadCommand = program
     .command('download <series> <chapters> [maxChapter]')
     .alias('dl')
     .description('Downloads specific chapters from a given series.')
     .option('-l, --untilLast', 'Download until the last released chapter')
     .option('-O, --outputDirectory <directory>', 'Setting: Directory in which the files will be downloaded.')
     .option('-f, --outputFormat <outputFormat>', 'Set how the downloaded content will be outputted: ' + allowedOutputFormats.join(' | ') + '.')
-    .option('-r, --clean', 'Remove starkana and scanlator team credits.')
-    .option('-R, --rename', 'Rename chapter files upon download.')
     .option('-u, --url <url>', 'Use url path instead of normal one. Should not contain shared path "starkana.com/manga".')
     .action(function(series, chapters, maxChapter, options) {
         if (!series) {
@@ -111,27 +128,28 @@ program
         async.eachLimit(jobs, 5, asyncJobRunner(config), gracefulEnd);
 
     }).on('--help', function() {
-        console.log('  Examples:');
-        console.log();
-        console.log('    $ starkana-cli download "One Piece" 42');
-        console.log('    $ starkana-cli dl Naruto 690');
-        console.log();
+        examples([
+            'download "One Piece" 42',
+            'dl Naruto 690'
+        ]);
     });
 
-program
+var cleanCommand = program
     .command('clean <folders...>')
     .alias('cl')
-    .description('Downloads specific chapters from a given series.')
-    .option('-s, --starkanacredits', 'Remove Starkana credits')
-    .option('-d, --duplicate', 'Remove duplicate files in all of the downloaded chapters. Used to remove scanlation credits.')
+    .description('Clean by removing starkana and/or duplicate files in a folder.')
     .action(function(folders, options) {
         if (!folders || folders.length === 0) {
             gracefulEnd("Missing folder argument.");
         }
 
+        if (!options.cleanStarkanaCredits && !options.cleanDuplicates) {
+            gracefulEnd("Missing argument specifying the cleaning operation (-s / -d).");
+        }
+
         var job = {
-            cleanStarkanaCredits: options.starkanacredits || false,
-            cleanDuplicates: options.duplicate || false
+            cleanStarkanaCredits: options.cleanStarkanaCredits || false,
+            cleanDuplicates: options.cleanDuplicates || false
         };
 
         cleaner.cleanFolders(folders, job, function(error, data) {
@@ -139,22 +157,45 @@ program
                 return gracefulEnd(error);
             }
             detailCleanOperation(job, data);
+
+            var config = init(program, options);
+            if (config.rename) {
+                rename(folders, config, gracefulEnd);
+            }
         });
     }).on('--help', function() {
-        console.log('  Examples:');
-        console.log();
-        console.log('    $ starkana-cli cl /my/folder -sd');
-        console.log();
+        examples([
+            'clean /my/folder -sd',
+            'cl /my/folder /my/second/folder -sd'
+        ]);
     });
 
-program
-    .command('*')
-    .action(function() {
-        program.help();
+var renameCommand = program
+    .command('rename <folders...>')
+    .alias('rn')
+    .description('Rename files in folders.')
+    .action(function(folders, options) {
+        if (!folders || folders.length === 0) {
+            gracefulEnd("Missing folder argument.");
+        }
+        var config = init(program, options);
+        rename(folders, config, gracefulEnd);
+    }).on('--help', function() {
+        examples([
+            'rename /my/folder',
+            'rn /my/folder /my/second/folder'
+        ]);
     });
+
+// Adding options common to multiple commands
+[downloadCommand, cleanCommand].forEach(function(command) {
+    command
+        .option('-s, --cleanStarkanaCredits', 'Remove Starkana credits')
+        .option('-d, --cleanDuplicates', 'Remove duplicate files in all of the downloaded chapters (used to remove scanlation credits).')
+        .option('-R, --rename', 'Rename folders after operation.');
+});
 
 program.parse(process.argv);
-
 
 if (!program.args.length) {
     program.help();
