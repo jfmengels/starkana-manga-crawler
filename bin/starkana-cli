@@ -18,7 +18,7 @@ var utils = require("../utils"),
 
 var allowedOutputFormats = ["folder", "zip"],
     configFile = "./config.json",
-    baseConfig = baseConfig = {
+    baseConfig = {
         readDirectories: [],
         outputDirectory: ".",
         outputFormat: "folder",
@@ -48,7 +48,7 @@ function init(program, options) {
     try {
         var configData = fs.readFileSync(configFile);
         config = JSON.parse(configData);
-    } catch (e) {console.error(e)}
+    } catch (e) {}
 
     config = extend({}, baseConfig, config, options);
 
@@ -161,16 +161,25 @@ var updateCommand = program
     });
 
 var cleanCommand = program
-    .command('clean <folders...>')
+    .command('clean [folders...]')
     .alias('cl')
-    .description('Clean by removing starkana and/or duplicate files in a folder.')
+    .description('Clean by removing starkana and/or duplicate files in a folder (default: outputDirectory specified in the config).')
     .action(function(folders, options) {
-        if (!folders || folders.length === 0) {
-            gracefulEnd("Missing folder argument.");
+        var config = init(program, options);
+        if (folders.length === 0) {
+            folders = [config.outputDirectory];
         }
 
+        // Which operation should we launch? Use the ones specified in the options.
         if (!options.cleanStarkanaCredits && !options.cleanDuplicates) {
-            gracefulEnd("Missing argument specifying the cleaning operation (-s / -d).");
+            // If none are present, use those in the config
+            options.cleanStarkanaCredits = config.cleanStarkanaCredits;
+            options.cleanDuplicates = config.cleanDuplicates;
+
+            // If none are specified in the config either, tell the user to choose one.
+            if (!options.cleanStarkanaCredits && !options.cleanDuplicates) {
+                gracefulEnd("Missing argument specifying the cleaning operation (-s / -d).");
+            }
         }
 
         var job = {
@@ -184,7 +193,6 @@ var cleanCommand = program
             }
             detailCleanOperation(job, data);
 
-            var config = init(program, options);
             if (config.rename) {
                 rename(folders, config, gracefulEnd);
             }
@@ -196,15 +204,15 @@ var cleanCommand = program
         ]);
     });
 
-var renameCommand = program
-    .command('rename <folders...>')
+program
+    .command('rename [folders...]')
     .alias('rn')
-    .description('Rename files in folders.')
+    .description('Rename files in folders (default: outputDirectory specified in the config).')
     .action(function(folders, options) {
-        if (!folders || folders.length === 0) {
-            gracefulEnd("Missing folder argument.");
-        }
         var config = init(program, options);
+        if (folders.length === 0) {
+            folders = [config.outputDirectory];
+        }
         rename(folders, config, gracefulEnd);
     }).on('--help', function() {
         examples([
@@ -232,7 +240,7 @@ program
                     return s.name + " (at " + s.url + ")";
                 }
                 return s.name;
-            })
+            });
             console.log(subscriptions.sort().join('\n'));
             return;
         }
@@ -250,7 +258,7 @@ program
                     return 1;
                 }
                 return 0;
-            })
+            });
             action = "Subscribed to";
         }
         saveConfig(config);
