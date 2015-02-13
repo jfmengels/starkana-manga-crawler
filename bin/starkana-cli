@@ -170,7 +170,6 @@ var updateCommand = program
     .command('update [series...]')
     .alias('up')
     .description('Update the series you subscribed to.')
-    .option('-r, --readDirectories <directories>', 'Directories in which to look into to find current progress (not including the outputDirectory). Separate by \';\'.')
     .option('-f, --force', 'When no chapters are found for a series, nothing will get downloaded unless forced.')
     .option('-c, --cache', 'Use cache to remember the progress in case some readDirectories are not available.')
     .action(function(series, options) {
@@ -194,6 +193,65 @@ var updateCommand = program
         examples([
             'update',
             'up Bleach "One Piece" -r /look/in/this/folder;/and/in/this/one'
+        ]);
+    });
+
+var cacheCommand = program
+    .command('cache [series...]')
+    .description('Show current cache and/or update it.')
+    .option('-l, --list', 'List the cache.')
+    .option('-u, --update', 'Update the cache for the subscribed series.')
+    .option('-z, --zero', 'Ignore the values in the cache, even if it\'s value is higher. Only if using --update.')
+    .action(function(series, options) {
+        if (options.readDirectories) {
+            options.readDirectories = options.readDirectories.split(';');
+        }
+        var config = init(program, options);
+
+        // Listing cache values
+        function listCache() {
+            var keys = Object.keys(config.cacheData);
+            if (series.length !== 0) {
+                keys = keys.filter(function(key) {
+                    return series.indexOf(key) !== -1;
+                });
+            }
+
+            var cacheAsString = keys
+                .sort()
+                .map(function(key) {
+                    return key + ": " + config.cacheData[key];
+                })
+                .join('\n');
+
+            console.log(cacheAsString);
+        }
+
+        if (config.update) {
+            updater.updateCache(config, series, function(error) {
+                if (error) {
+                    gracefulEnd(error);
+                }
+                saveCache(config, function(error) {
+                    if (error) {
+                        gracefulEnd(error);
+                    }
+                    if (config.list) {
+                        listCache();
+                    }
+                });
+            });
+        } else if (config.list) {
+            listCache();
+        } else {
+            gracefulEnd("Missing argument specifying the operation (--list / --update).");
+        }
+    }).on('--help', function() {
+        examples([
+            'cache -l                     # Lists content of cache',
+            'cache -uz                    # Update cache by starting from scratch then list it.',
+            'cache Naruto -uz             # Update cache for Naruto, erasing what\'s inside the cache.',
+            'cache -ur /look/in/this/folder;/and/in/this/one # Update cache by looking at specific folders',
         ]);
     });
 
@@ -241,7 +299,7 @@ var cleanCommand = program
         ]);
     });
 
-program
+var renameCommand = program
     .command('rename [folders...]')
     .alias('rn')
     .description('Rename files in folders (default: outputDirectory specified in the config).')
@@ -258,7 +316,7 @@ program
         ]);
     });
 
-program
+var subCommand = program
     .command('sub [series...]')
     .description('List subscriptions or subscribe to series.')
     .option('-d, --delete', 'Unsubscribe from series.')
@@ -323,8 +381,26 @@ program
         .option('-O, --outputDirectory <directory>', 'Directory in which the files will be downloaded.');
 });
 
+[updateCommand, cacheCommand].forEach(function(command) {
+    command
+        .option('-r, --readDirectories <directories>', 'Directories in which to look into to find current progress (not including the outputDirectory). Separate by \';\'.');
+});
+
 program.parse(process.argv);
 
-if (!program.args.length) {
-    program.help();
+if (!process.argv.length) {
+    var commands = [
+        downloadCommand,
+        updateCommand,
+        cacheCommand,
+        subCommand,
+        cleanCommand,
+        renameCommand
+    ].map(function(c) {
+        return c.name();
+    });
+
+    if (commands.indexOf(process.argv[2]) === -1 && commands.indexOf(process.argv[3]) === -1) {
+        program.help();
+    }
 }

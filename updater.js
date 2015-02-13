@@ -36,17 +36,17 @@ function selectSeries(selectedSeries, config) {
 
 var updater = {};
 
-updater.findLatestChapterInFolder = function(folder, series, cb) {
-    fs.readdir(path.resolve(folder, series.name), function(error, files) {
+updater.findLatestChapterInFolder = function(seriesName, folder, cb) {
+    fs.readdir(path.resolve(folder, seriesName), function(error, files) {
         if (error) {
             return cb(null, -1);
         }
         var chapterNumbers = files
             .filter(function(item) {
-                return item.indexOf(series.name) > -1;
+                return item.indexOf(seriesName) > -1;
             })
             .map(function(item) {
-                return parseFloat(item.substring(series.name.length + 1));
+                return parseFloat(item.substring(seriesName.length + 1));
             })
             .filter(function(item) {
                 return !isNaN(item);
@@ -59,18 +59,24 @@ updater.findLatestChapterInFolder = function(folder, series, cb) {
     });
 };
 
+updater.getCurrentChapterInFolders = function(seriesName, folders, cb) {
+    async.map(folders, function(folder, cb) {
+        updater.findLatestChapterInFolder(seriesName, folder, cb);
+    }, function(error, latestsInFolder) {
+        if (error) {
+            return cb(error);
+        }
+        return cb(null, Math.max.apply(null, latestsInFolder));
+    });
+};
+
 updater.updateWithCurrentChapter = function(seriesList, folders, config, cb) {
     async.forEach(seriesList, function(series, cb) {
-        async.map(folders, function(folder, cb) {
-            updater.findLatestChapterInFolder(folder, series, cb);
-        }, function(error, latestsInFolder) {
+        updater.getCurrentChapterInFolders(series.name, folders, function(error, latest) {
             if (error) {
                 return cb(error);
             }
-            if (config.cacheData[series.name]) {
-                latestsInFolder.push(config.cacheData[series.name]);
-            }
-            series.currentChapter = Math.max.apply(null, latestsInFolder);
+            series.currentChapter = Math.max(latest, config.cacheData[series.name] || -1);
             return cb();
         });
     }, cb);
@@ -118,5 +124,38 @@ updater.update = function(selectedSeries, config, cb, progressCb) {
         });
     });
 };
+
+
+// Cache operations
+updater.updateCache = function(config, series, cb) {
+    if (config.zero && series.length === 0) {
+        config.cacheData = {};
+    }
+    var folders = [config.outputDirectory].concat(config.readDirectories),
+        subscriptions = config.subscriptions;
+
+    if (series.length !== 0) {
+        subscriptions = subscriptions.filter(function(s) {
+            return series.indexOf(s.name) !== -1;
+        });
+    }
+    async.forEach(subscriptions, function(series, cb) {
+        // For each series, find out the progress in the folders we are looking at
+        updater.getCurrentChapterInFolders(series.name, folders, function(error, latest) {
+            if (error) {
+                return cb(error);
+            }
+
+            if (!config.zero) { // If using cache, see if the cache's value is higher
+                latest = Math.max(latest, config.cacheData[series.name] || -1);
+            }
+            if (latest !== -1) {
+                config.cacheData[series.name] = latest;
+            }
+            return cb();
+        });
+    }, cb);
+};
+
 
 module.exports = updater;
