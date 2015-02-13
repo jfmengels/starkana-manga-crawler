@@ -45,7 +45,7 @@ updater.update = function(filter, config, cb, progressCb) {
         // Adding those in the filter that are not in the subscriptions
         series = subscriptions.concat(filter
             .filter(function(s) {
-            	return !seriesObject[s];
+                return !seriesObject[s];
             })
             .map(function(name) {
                 return {
@@ -63,6 +63,9 @@ updater.update = function(filter, config, cb, progressCb) {
         }, function(error, maxChapterNumbers) {
             if (error) {
                 return cb(error);
+            }
+            if (config.cacheData[series.name]) {
+                maxChapterNumbers.push(config.cacheData[series.name]);
             }
             var maxChapter = Math.max.apply(null, maxChapterNumbers);
             if (maxChapter === -1 && !config.force) {
@@ -84,9 +87,22 @@ updater.update = function(filter, config, cb, progressCb) {
         jobs = jobs.filter(function(item) {
             return item;
         });
+
+        var updateResults = [];
         async.eachSeries(jobs, function(job, cb) {
-            crawler.runJob(config, job, cb, progressCb);
-        }, cb);
+            crawler.runJob(config, job, function(error, results) {
+                if (error) {
+                    return cb(error);
+                }
+                updateResults = updateResults.concat(results);
+                return cb();
+            }, progressCb);
+        }, function(error) {
+            if (error) {
+                return cb(error);
+            }
+            return cb(null, updateResults);
+        });
     });
 };
 

@@ -47,6 +47,16 @@ function saveCache(config, cb) {
     fs.writeFile(cacheFile, JSON.stringify(config.cacheData, null, 4), cb);
 }
 
+
+function addResultsToCache(config, results, cb) {
+    results.forEach(function(r) {
+        if (!r.isMissing) {
+            config.cacheData[r.series] = Math.max(config.cacheData[r.series] || 0, r.chapter);
+        }
+    });
+    saveCache(config, cb);
+}
+
 function init(program, options) {
     var config = {};
     configFile = program.config || configFile;
@@ -78,17 +88,6 @@ function init(program, options) {
 
 function progressPrinter(progress) {
     console.log(progress.type + "\t" + progress.action + "\t" + progress.series + " " + (progress.chapter || ""));
-}
-
-function asyncJobRunner(config) {
-    return function(job, cb) {
-        crawler.runJob(config, job, function(error, results) {
-            if (error) {
-                return cb(error);
-            }
-            return cb(null, results);
-        }, progressPrinter);
-    };
 }
 
 function detailCleanOperation(job, data) {
@@ -155,15 +154,10 @@ var downloadCommand = program
                 if (error) {
                     gracefulEnd(error);
                 }
-                results.forEach(function(r) {
-                    if (!r.isMissing) {
-                        config.cacheData[r.series] = Math.max(config.cacheData[r.series] || 0, r.chapter);
-                    }
-                });
-                saveCache(config, gracefulEnd);
-            }
+                addResultsToCache(config, results, gracefulEnd);
+            };
         }
-        crawler.runJob(config, job, cb, progressPrinter)
+        crawler.runJob(config, job, cb, progressPrinter);
 
     }).on('--help', function() {
         examples([
@@ -187,12 +181,12 @@ var updateCommand = program
 
         var cb = gracefulEnd;
         if (config.cache) {
-            cb = function(error) {
+            cb = function(error, results) {
                 if (error) {
                     gracefulEnd(error);
                 }
-                saveCache(config, gracefulEnd);
-            }
+                addResultsToCache(config, results, gracefulEnd);
+            };
         }
 
         updater.update(series, config, cb, progressPrinter);
