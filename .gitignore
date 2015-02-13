@@ -1,5 +1,6 @@
-# Local config
+# Local
 config.json
+cache.json
 
 # Logs
 logs

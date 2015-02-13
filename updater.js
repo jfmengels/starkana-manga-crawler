@@ -5,9 +5,38 @@ var async = require("async");
 var utils = require("./utils");
 var crawler = require("./crawler");
 
+function selectSeries(selectedSeries, config) {
+    // Filtering + adding series
+    if (selectedSeries.length === 0) {
+        return config.subscriptions;
+    }
+
+    var seriesList = config.subscriptions;
+
+    var seriesObject = utils.convertSeriesToObject(seriesList);
+
+    // Filtering out series in the subscriptions
+    var subscriptions = seriesList.filter(function(s) {
+        return selectedSeries.indexOf(s.name) > -1;
+    });
+
+    // Adding those in the filter that are not in the subscriptions
+    return subscriptions.concat(selectedSeries
+        .filter(function(s) {
+            return !seriesObject[s];
+        })
+        .map(function(name) {
+            return {
+                name: name
+            };
+        })
+    );
+}
+
+
 var updater = {};
 
-updater.getCurrentMaxChapter = function(folder, series, cb) {
+updater.findLatestChapterInFolder = function(folder, series, cb) {
     fs.readdir(path.resolve(folder, series.name), function(error, files) {
         if (error) {
             return cb(null, -1);
@@ -30,65 +59,49 @@ updater.getCurrentMaxChapter = function(folder, series, cb) {
     });
 };
 
-updater.update = function(filter, config, cb, progressCb) {
-    var series = config.subscriptions;
-
-    // Filtering + adding series
-    if (filter.length > 0) {
-        var seriesObject = utils.convertSeriesToObject(series);
-
-        // Filtering out series in the subscriptions
-        var subscriptions = series.filter(function(s) {
-            return filter.indexOf(s.name) > -1;
-        });
-
-        // Adding those in the filter that are not in the subscriptions
-        series = subscriptions.concat(filter
-            .filter(function(s) {
-                return !seriesObject[s];
-            })
-            .map(function(name) {
-                return {
-                    name: name
-                };
-            })
-        );
-    }
-
-    var foldersToLookInto = [config.outputDirectory].concat(config.readDirectories);
-
-    async.map(series, function(series, cb) {
-        async.map(foldersToLookInto, function(folder, cb) {
-            updater.getCurrentMaxChapter(folder, series, cb);
-        }, function(error, maxChapterNumbers) {
+updater.updateWithCurrentChapter = function(seriesList, folders, config, cb) {
+    async.forEach(seriesList, function(series, cb) {
+        async.map(folders, function(folder, cb) {
+            updater.findLatestChapterInFolder(folder, series, cb);
+        }, function(error, latestsInFolder) {
             if (error) {
                 return cb(error);
             }
             if (config.cacheData[series.name]) {
-                maxChapterNumbers.push(config.cacheData[series.name]);
+                latestsInFolder.push(config.cacheData[series.name]);
             }
-            var maxChapter = Math.max.apply(null, maxChapterNumbers);
-            if (maxChapter === -1 && !config.force) {
-                return cb();
-            }
-            return cb(null, crawler.createJob({
-                series: series.name,
-                currentChapter: maxChapter,
-                untilLast: true,
-                url: series.url
-            }));
+            series.currentChapter = Math.max.apply(null, latestsInFolder);
+            return cb();
         });
-    }, function(error, jobs) {
+    }, cb);
+};
+
+updater.update = function(selectedSeries, config, cb, progressCb) {
+    var updateResults = [],
+        seriesList = selectSeries(selectedSeries, config),
+        foldersToLookInto = [config.outputDirectory].concat(config.readDirectories);
+
+    updater.updateWithCurrentChapter(seriesList, foldersToLookInto, config, function(error) {
         if (error) {
             return cb(error);
         }
 
-        // Filter 'undefined' jobs
-        jobs = jobs.filter(function(item) {
-            return item;
+        // Remove chapter whose progress we don't know, unless forced.
+        if (!config.force) {
+            seriesList = seriesList.filter(function(s) {
+                return s.currentChapter !== -1;
+            });
+        }
+
+        var jobs = seriesList.map(function(s) {
+            return crawler.createJob({
+                series: s.name,
+                currentChapter: s.currentChapter,
+                url: s.url,
+                untilLast: true
+            });
         });
 
-        var updateResults = [];
         async.eachSeries(jobs, function(job, cb) {
             crawler.runJob(config, job, function(error, results) {
                 if (error) {
