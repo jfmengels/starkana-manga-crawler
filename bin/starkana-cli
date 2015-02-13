@@ -149,18 +149,6 @@ var downloadCommand = program
                 url: config.url
             });
 
-        var results = [{
-            series: 'Naruto',
-            chapter: 401,
-            zipFile: '/media/Data/Downloads/Manga2/Naruto/Naruto 401.zip',
-            outputFile: '/media/Data/Downloads/Manga2/Naruto/Naruto 401'
-        }, {
-            series: 'Naruto',
-            chapter: 400,
-            zipFile: '/media/Data/Downloads/Manga2/Naruto/Naruto 400.zip',
-            outputFile: '/media/Data/Downloads/Manga2/Naruto/Naruto 400'
-        }];
-
         var cb = gracefulEnd;
         if (config.cache) {
             cb = function(error, results) {
