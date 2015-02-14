@@ -5,13 +5,6 @@ var async = require("async");
 var jsdom = require("jsdom");
 var mkdirp = require("mkdirp");
 var AdmZip = require("adm-zip");
-var extend = require("extend");
-var fileLister = require("file-lister");
-
-var cleaner = require("./cleaner");
-var renamer = require("./renamer");
-
-var crawler = {};
 
 function findChapterLink($, chapterItem) {
     var result = {};
@@ -32,40 +25,6 @@ function findChapterLink($, chapterItem) {
     return result;
 }
 
-function clean(results, config, cb) {
-    var dirs = results
-        .filter(function(item) {
-            return !item.isMissing && item.outputFile;
-        })
-        .map(function(item) {
-            return item.outputFile;
-        });
-    if (dirs.length === 0) {
-        return cb();
-    }
-    fileLister.listFiles(dirs, function(error, list) {
-        if (error) {
-            return cb(error);
-        }
-        cleaner.findDuplicatesAndCredits(list, function(error, filesToRemove) {
-            if (error) {
-                return cb(error);
-            }
-            async.each(filesToRemove, fs.unlink, function(error) {
-                if (error) {
-                    return cb(error);
-                }
-                if (config.rename && config.outputFormat === "folder") {
-                    return renamer.renameFolders(dirs, {
-                        onlyNodedirs: true
-                    }, cb);
-                }
-                return cb();
-            });
-        });
-    });
-}
-
 function listChapters(start, end) {
     var list = [],
         current = start;
@@ -82,7 +41,7 @@ function addChaptersUntilLast(job, $) {
     var currentChapterSelector = $("#inner_page td:contains('chapter " + job.currentChapter + "')"),
         delimiter = 'chapter ';
 
-    if(job.currentChapter < 1) {
+    if (job.currentChapter < 1) {
         currentChapterSelector = $("#inner_page td:contains('chapter ')").last();
     }
 
@@ -102,12 +61,12 @@ function addChaptersUntilLast(job, $) {
         .reverse();
 
     // Add first chapter if there are no chapters yet
-    if(job.currentChapter < 1) {
+    if (job.currentChapter < 1) {
         var firstChapterElement = currentChapterSelector.next().children("a"),
             chapterText = currentChapterSelector.text();
 
         chapterText = chapterText.slice(chapterText.indexOf(delimiter) + delimiter.length);
-        
+
         job.chapters.unshift({
             chapter: chapterNumber(currentChapterSelector),
             url: firstChapterElement.attr("href")
@@ -134,9 +93,16 @@ function findLatestChapterNumber($) {
     return parseInt(text);
 }
 
+function progress(message, type, cb) {
+    message.type = type;
+    return cb(message);
+}
 
 
 
+
+
+var crawler = {};
 
 crawler.createJob = function(jobRequest) {
     var minChapter = jobRequest.chapter,
@@ -166,33 +132,157 @@ crawler.createJob = function(jobRequest) {
     };
 };
 
-crawler.downloadChapter = function($, config, job, chapterItem, cb) {
-    var link = findChapterLink($, chapterItem),
-        result = {
-            series: job.series,
-            chapter: chapterItem.chapter,
-            zipFile: path.resolve(config.outputDirectory, job.series, job.series + " " + chapterItem.chapter + ".zip")
-        };
-
-    if (!link.url) {
-        extend(result, link);
-        return cb(null, result);
+crawler.runJobs = function(fetchJobs, config, cb, progressCb) {
+    if (!progressCb) {
+        progressCb = function() {};
     }
 
-    var file = fs.createWriteStream(result.zipFile);
+    function launchDownloadJob(dlJob, cb) {
+        var downloadProgress = {
+            action: "download",
+            target: "chapter",
+            series: dlJob.series,
+            chapter: dlJob.chapter,
+        };
 
-    http.get(link.url, function(res) {
-        var alreadyCalled = false;
-
-        function callback(error) {
-            if (!alreadyCalled) {
-                alreadyCalled = true;
-                return cb(error, result);
+        progress(downloadProgress, "start", progressCb);
+        crawler.downloadChapterAsZip(dlJob, function(error) {
+            if (error) {
+                return cb(error, dlJob);
             }
+            progress(downloadProgress, "end", progressCb);
+            if (config.outputFormat === "zip") {
+                return cb(null, dlJob);
+            }
+            extractZip(dlJob.zipFile, dlJob.outputFile, function(error) {
+                return cb(error, dlJob);
+            });
+        });
+    }
+
+    var hasFinishedFetching = false,
+        results = [];
+
+    var downloadQueue = async.queue(launchDownloadJob, 5);
+
+    downloadQueue.drain = function() {
+        if (hasFinishedFetching) {
+            return cb(null, results);
         }
-        res.pipe(file)
-            .on("error", callback)
-            .on("finish", callback);
+    };
+
+    async.each(fetchJobs, function(fetchJob, cb) {
+        var checkProgress = {
+            action: "check",
+            target: "series",
+            series: fetchJob.series
+        };
+
+        progress(checkProgress, "start", progressCb);
+        crawler.findDownloadJobs(fetchJob, config, function(error, dlJobs) {
+            if (error) {
+                return cb(error);
+            }
+            progress(checkProgress, "end", progressCb);
+
+            if (dlJobs.length === 0) {
+                return cb();
+            }
+            progressCb({
+                action: "queue",
+                type: "add",
+                series: fetchJob.series,
+                newJobs: dlJobs.map(function(job) {
+                    return job.chapter;
+                })
+            });
+            downloadQueue.push(dlJobs, function(error, dlJob) {
+                if (error) {
+                    return cb(error);
+                }
+                results.push(dlJob);
+            });
+            return cb();
+        });
+    }, function(error) {
+        if (error) {
+            return cb(error);
+        }
+        // If queue is empty, return cb
+        hasFinishedFetching = true;
+        if (downloadQueue.idle()) {
+            return cb(null, results);
+        }
+    });
+};
+
+crawler.findDownloadJobs = function(fetchJob, config, cb, progressCb) {
+    if (!progressCb) {
+        progressCb = function() {};
+    }
+    jsdom.env({
+        url: crawler.getPageUrl(fetchJob),
+        scripts: ["http://code.jquery.com/jquery.js"],
+        done: function(errors, window) {
+            if (errors) {
+                return cb(errors.join("\n"));
+            }
+            if (fetchJob.untilLast) {
+                addChaptersUntilLast(fetchJob, window.$);
+            }
+
+            var dlJobs = fetchJob.chapters
+                .map(function(chapterItem) {
+                    var series = fetchJob.series,
+                        chapter = chapterItem.chapter,
+                        outputFile = path.resolve(config.outputDirectory, series, series + " " + chapter),
+                        link = findChapterLink(window.$, chapterItem);
+
+                    if (link.isMissing || link.isRemoved) {
+                        progressCb({
+                            action: "download",
+                            target: "chapter",
+                            type: link.isMissing ? "missing" : "removed",
+                            series: series,
+                            chapter: chapter,
+                        });
+                        return null;
+                    }
+
+                    return {
+                        series: series,
+                        chapter: chapter,
+                        outputFile: outputFile,
+                        zipFile: outputFile + ".zip",
+                        url: link.url
+                    };
+                })
+                .filter(function(item) {
+                    return item;
+                });
+            return cb(null, dlJobs);
+        }
+    });
+};
+
+crawler.downloadChapterAsZip = function(dlJob, cb) {
+    mkdirp(path.dirname(dlJob.zipFile), function(error) {
+        if (error) {
+            return cb(error, dlJob);
+        }
+        http.get(dlJob.url, function(res) {
+            var alreadyCalled = false;
+
+            function callback(error) {
+                if (!alreadyCalled) {
+                    alreadyCalled = true;
+                    return cb(error, dlJob);
+                }
+            }
+            res.pipe(fs.createWriteStream(dlJob.zipFile))
+                .on("error", callback)
+                .on("finish", callback);
+        });
     });
 };
 
@@ -214,138 +304,6 @@ crawler.getPageUrl = function(job) {
         .replace(/\s/g, "_")
         .replace(/'/g, "");
     return baseUrl + firstChar + "/" + seriesName;
-};
-
-crawler.runJob = function(config, job, cb, progressCb) {
-    if (!progressCb) {
-        progressCb = function() {};
-    }
-    progressCb({
-        action: "check",
-        target: "series",
-        type: "start",
-        series: job.series
-    });
-    jsdom.env({
-        url: crawler.getPageUrl(job),
-        scripts: ["http://code.jquery.com/jquery.js"],
-        done: function(errors, window) {
-            if (errors) {
-                return cb(errors.join("\n"));
-            }
-            var $ = window.$,
-                results = [];
-
-            if (job.untilLast) {
-                addChaptersUntilLast(job, $);
-            }
-
-            if (job.chapters.length === 0) {
-                return cb(null, []);
-            }
-
-            progressCb({
-                action: "download",
-                target: "series",
-                type: "start",
-                series: job.series
-            });
-            mkdirp(path.resolve(config.outputDirectory, job.series), function(error) {
-                if (error) {
-                    return cb(error);
-                }
-                async.eachLimit(job.chapters, 5, function(chapterItem, cb) {
-                    function callback(error, result) {
-                        if (error) {
-                            return cb(error);
-                        }
-                        results.push(result);
-                        return cb();
-                    }
-
-                    progressCb({
-                        action: "download",
-                        target: "chapter",
-                        type: "start",
-                        series: job.series,
-                        chapter: chapterItem.chapter,
-                    });
-                    crawler.downloadChapter($, config, job, chapterItem, function(error, result) {
-                        function endProgress() {
-                            progressCb({
-                                action: "download",
-                                target: "chapter",
-                                type: "end",
-                                series: job.series,
-                                chapter: chapterItem.chapter,
-                            });
-                        }
-                        if (error) {
-                            return callback(error);
-                        }
-                        if (result.isRemoved) {
-                            progressCb({
-                                action: "download",
-                                target: "chapter",
-                                type: "removed",
-                                series: job.series,
-                                chapter: chapterItem.chapter,
-                            });
-                        } else if (result.isMissing) {
-                            progressCb({
-                                action: "download",
-                                target: "chapter",
-                                type: "missing",
-                                series: job.series,
-                                chapter: chapterItem.chapter,
-                            });
-                        }
-                        if (result.isMissing || config.outputFormat === "zip") {
-                            endProgress();
-                            return callback(null, result);
-                        }
-
-                        result.outputFile = result.zipFile.replace(".zip", "");
-                        extractZip(result.zipFile, result.outputFile, function(error) {
-                            endProgress();
-                            if (error) {
-                                return callback(error);
-                            }
-                            return callback(null, result);
-                        });
-                    });
-                }, function(error) {
-                    if (error) {
-                        return cb(error);
-                    }
-                    progressCb({
-                        action: "download",
-                        target: "series",
-                        type: "end",
-                        series: job.series
-                    });
-                    if (!config.clean) {
-                        return cb(null, results);
-                    }
-                    progressCb({
-                        action: "cleanup",
-                        target: "series",
-                        type: "start",
-                        series: job.series
-                    });
-                    return clean(results, config, function(error) {
-                        progressCb({
-                            action: "cleanup",
-                            target: "series",
-                            type: "end",
-                            series: job.series
-                        });
-                        return cb(error, results);
-                    });
-                });
-            });
-        }
-    });
 };
 
 crawler.findLatestChapterNumber = function(series, cb) {

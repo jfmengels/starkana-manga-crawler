@@ -87,7 +87,11 @@ function init(program, options) {
 }
 
 function progressPrinter(progress) {
-    console.log(progress.type + "\t" + progress.action + "\t" + progress.series + " " + (progress.chapter || ""));
+    if (progress.action === "queue") {
+        console.log("Queuing " + progress.newJobs.length + " chapter for " + progress.series);
+    } else {
+        console.log(progress.type + "\t" + progress.action + "\t" + progress.series + " " + (progress.chapter || ""));
+    }
 }
 
 function detailCleanOperation(job, data) {
@@ -157,7 +161,7 @@ var downloadCommand = program
                 addResultsToCache(config, results, gracefulEnd);
             };
         }
-        crawler.runJob(config, job, cb, progressPrinter);
+        crawler.runJobs([job], config, cb, progressPrinter);
 
     }).on('--help', function() {
         examples([
