@@ -88,7 +88,8 @@ function init(program, options) {
 
 function progressPrinter(progress) {
     if (progress.action === "queue") {
-        console.log("Queuing " + progress.newJobs.length + " chapter for " + progress.series);
+        var amount = progress.newJobs.length + " chapter" + progress.newJobs.length > 1 ? "s" : "";
+        console.log("Queuing " + amount " for " + progress.series);
     } else {
         console.log(progress.type + "\t" + progress.action + "\t" + progress.series + " " + (progress.chapter || ""));
     }

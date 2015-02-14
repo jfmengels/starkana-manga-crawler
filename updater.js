@@ -108,20 +108,7 @@ updater.update = function(selectedSeries, config, cb, progressCb) {
             });
         });
 
-        async.eachSeries(jobs, function(job, cb) {
-            crawler.runJob(config, job, function(error, results) {
-                if (error) {
-                    return cb(error);
-                }
-                updateResults = updateResults.concat(results);
-                return cb();
-            }, progressCb);
-        }, function(error) {
-            if (error) {
-                return cb(error);
-            }
-            return cb(null, updateResults);
-        });
+        crawler.runJobs(jobs, config, cb, progressCb);
     });
 };
 
