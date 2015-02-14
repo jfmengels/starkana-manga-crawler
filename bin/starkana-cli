@@ -3,6 +3,7 @@
 'use strict';
 
 var fs = require("fs");
+var async = require('async');
 var extend = require('extend');
 var program = require('commander');
 
@@ -47,7 +48,6 @@ function saveCache(config, cb) {
     fs.writeFile(cacheFile, JSON.stringify(config.cacheData, null, 4), cb);
 }
 
-
 function addResultsToCache(config, results, cb) {
     results.forEach(function(r) {
         if (!r.isMissing) {
@@ -72,6 +72,12 @@ function init(program, options) {
         gracefulEnd("unsupported outputFormat: " + config.outputFormat);
     }
 
+    // These should override config
+    if (options.cleanStarkanaCredits || options.cleanDuplicates) {
+        config.cleanStarkanaCredits = options.cleanStarkanaCredits;
+        config.cleanDuplicates = options.cleanDuplicates;
+    }
+
     if (config.cache) {
         try {
             var cacheData = fs.readFileSync(cacheFile);
@@ -91,7 +97,7 @@ function progressPrinter(progress) {
         var amount = progress.newJobs.length + " chapter" + (progress.newJobs.length > 1 ? "s" : "");
         console.log("Queuing " + amount + " for " + progress.series);
     } else if (progress.action === "check") {
-        if(progress.type === "start") {
+        if (progress.type === "start") {
             console.log("Checking " + progress.series);
         }
     } else {
@@ -99,16 +105,16 @@ function progressPrinter(progress) {
     }
 }
 
-function detailCleanOperation(job, data) {
+function detailCleanOperation(job, cleanResults) {
     var output = [];
-    if (data.creditsRemoved === 0 && data.duplicatesRemoved === 0) {
+    if (cleanResults.creditsRemoved === 0 && cleanResults.duplicatesRemoved === 0) {
         return console.log("Nothing to clean.");
     }
     if (job.cleanStarkanaCredits) {
-        output.push(data.creditsRemoved + ' credit');
+        output.push(cleanResults.creditsRemoved + ' credit');
     }
     if (job.cleanDuplicates) {
-        output.push(data.duplicatesRemoved + ' duplicate');
+        output.push(cleanResults.duplicatesRemoved + ' duplicate');
     }
     console.log('Removed ' + output.join(' and ') + ' files.');
 }
@@ -123,8 +129,59 @@ function examples(exampleArray) {
     console.log();
 }
 
+function clean(folders, config, cb) {
+    if (!config.cleanStarkanaCredits && !config.cleanDuplicates) {
+        return cb();
+    }
+
+    var job = {
+        cleanStarkanaCredits: config.cleanStarkanaCredits || false,
+        cleanDuplicates: config.cleanDuplicates || false
+    };
+
+    cleaner.cleanFolders(folders, job, function(error, cleanResults) {
+        if (error) {
+            return cb(error);
+        }
+        detailCleanOperation(job, cleanResults);
+        return cb();
+    });
+}
+
 function rename(folders, config, cb) {
     renamer.renameFolders(folders, config, cb);
+}
+
+function postExecution(config, allowedOperations, cb) {
+    return function(error, results) {
+        if (error) {
+            return cb(error);
+        }
+        var folders = results.map(function(res) {
+            return res.outputFile;
+        });
+
+        var tasks = [];
+        if (config.cache && allowedOperations.indexOf("updateCache") !== -1) {
+            tasks.push(function(cb) {
+                addResultsToCache(config, results, cb);
+            });
+        }
+
+        if ((config.cleanStarkanaCredits || config.cleanDuplicates) && allowedOperations.indexOf("clean") !== -1) {
+            tasks.push(function(cb) {
+                clean(folders, config, cb);
+            });
+        }
+
+        if (config.rename && allowedOperations.indexOf("rename") !== -1) {
+            tasks.push(function(cb) {
+                rename(folders, config, cb);
+            });
+        }
+
+        async.series(tasks, cb);
+    };
 }
 
 
@@ -157,16 +214,7 @@ var downloadCommand = program
                 url: config.url
             });
 
-        var cb = gracefulEnd;
-        if (config.cache) {
-            cb = function(error, results) {
-                if (error) {
-                    gracefulEnd(error);
-                }
-                addResultsToCache(config, results, gracefulEnd);
-            };
-        }
-        crawler.runJobs([job], config, cb, progressPrinter);
+        crawler.runJobs([job], config, postExecution(config, ["updateCache", "clean", "rename"], gracefulEnd), progressPrinter);
 
     }).on('--help', function() {
         examples([
@@ -187,17 +235,7 @@ var updateCommand = program
         }
         var config = init(program, options);
 
-        var cb = gracefulEnd;
-        if (config.cache) {
-            cb = function(error, results) {
-                if (error) {
-                    gracefulEnd(error);
-                }
-                addResultsToCache(config, results, gracefulEnd);
-            };
-        }
-
-        updater.update(series, config, cb, progressPrinter);
+        updater.update(series, config, postExecution(config, ["updateCache", "clean", "rename"], gracefulEnd), progressPrinter);
     }).on('--help', function() {
         examples([
             'update',
@@ -274,32 +312,13 @@ var cleanCommand = program
             folders = [config.outputDirectory];
         }
 
-        // Which operation should we launch? Use the ones specified in the options.
-        if (!options.cleanStarkanaCredits && !options.cleanDuplicates) {
-            // If none are present, use those in the config
-            options.cleanStarkanaCredits = config.cleanStarkanaCredits;
-            options.cleanDuplicates = config.cleanDuplicates;
-
-            // If none are specified in the config either, tell the user to choose one.
-            if (!options.cleanStarkanaCredits && !options.cleanDuplicates) {
-                gracefulEnd("Missing argument specifying the cleaning operation (-s / -d).");
-            }
-        }
-
-        var job = {
-            cleanStarkanaCredits: options.cleanStarkanaCredits || false,
-            cleanDuplicates: options.cleanDuplicates || false
-        };
-
-        cleaner.cleanFolders(folders, job, function(error, data) {
-            if (error) {
-                return gracefulEnd(error);
-            }
-            detailCleanOperation(job, data);
-
-            if (config.rename) {
-                rename(folders, config, gracefulEnd);
-            }
+        clean(folders, config, function(error) {
+            folders = folders.map(function(f) {
+                return {
+                    outputFile: f
+                };
+            });
+            postExecution(config, ["rename"], gracefulEnd)(error, folders);
         });
     }).on('--help', function() {
         examples([
