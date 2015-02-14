@@ -171,7 +171,7 @@ crawler.runJobs = function(fetchJobs, config, cb, progressCb) {
         }
     };
 
-    async.each(fetchJobs, function(fetchJob, cb) {
+    async.eachLimit(fetchJobs, 5, function(fetchJob, cb) {
         var checkProgress = {
             action: "check",
             target: "series",

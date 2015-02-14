@@ -88,8 +88,12 @@ function init(program, options) {
 
 function progressPrinter(progress) {
     if (progress.action === "queue") {
-        var amount = progress.newJobs.length + " chapter" + progress.newJobs.length > 1 ? "s" : "";
-        console.log("Queuing " + amount " for " + progress.series);
+        var amount = progress.newJobs.length + " chapter" + (progress.newJobs.length > 1 ? "s" : "");
+        console.log("Queuing " + amount + " for " + progress.series);
+    } else if (progress.action === "check") {
+        if(progress.type === "start") {
+            console.log("Checking " + progress.series);
+        }
     } else {
         console.log(progress.type + "\t" + progress.action + "\t" + progress.series + " " + (progress.chapter || ""));
     }
