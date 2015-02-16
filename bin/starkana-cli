@@ -3,6 +3,7 @@
 'use strict';
 
 var fs = require("fs");
+var path = require('path');
 var async = require('async');
 var extend = require('extend');
 var program = require('commander');
@@ -31,6 +32,16 @@ var allowedOutputFormats = ["folder", "zip"],
         cacheData: {}
     };
 
+
+// CLI-related related function (printing, formatting...)
+function printError(error) {
+    console.error("\n  error: " + error + "\n");
+}
+
+function plural(array) {
+    return array.length > 1 ? "s" : "";
+}
+
 function gracefulEnd(error) {
     if (!error) {
         process.exit(0);
@@ -38,8 +49,45 @@ function gracefulEnd(error) {
     if ("object" === typeof error) {
         error = JSON.stringify(error, null, 4);
     }
-    console.error("\n  error: " + error + "\n");
+    printError(error);
     process.exit(1);
+}
+
+function progressPrinter(progress) {
+    if (progress.action === "queue") {
+        var amount = progress.newJobs.length + " chapter" + (progress.newJobs.length > 1 ? "s" : "");
+        console.log("Queuing " + amount + " for " + progress.series);
+    } else if (progress.action === "check") {
+        if (progress.type === "start") {
+            console.log("Checking " + progress.series);
+        }
+    } else {
+        console.log(progress.type + "\t" + progress.action + "\t" + progress.series + " " + (progress.chapter || ""));
+    }
+}
+
+function detailCleanOperation(job, cleaningResults) {
+    var output = [];
+    if (cleaningResults.creditsRemoved === 0 && cleaningResults.duplicatesRemoved === 0) {
+        return console.log("Nothing to clean.");
+    }
+    if (job.cleanStarkanaCredits) {
+        output.push(cleaningResults.creditsRemoved + ' credit');
+    }
+    if (job.cleanDuplicates) {
+        output.push(cleaningResults.duplicatesRemoved + ' duplicate');
+    }
+    console.log('Removed ' + output.join(' and ') + ' files.');
+}
+
+function examples(exampleArray) {
+    var commandName = program._name;
+    console.log('  Examples:');
+    console.log();
+    exampleArray.forEach(function(example) {
+        console.log('    $ ' + commandName + ' ' + example);
+    });
+    console.log();
 }
 
 function saveConfig(config) {
@@ -63,6 +111,9 @@ function addResultsToCache(config, results, cb) {
     saveCache(config, cb);
 }
 
+
+
+// Operation-related functions
 function init(program, options) {
     var config = {};
     configFile = program.config || configFile;
@@ -98,43 +149,6 @@ function init(program, options) {
     return config;
 }
 
-function progressPrinter(progress) {
-    if (progress.action === "queue") {
-        var amount = progress.newJobs.length + " chapter" + (progress.newJobs.length > 1 ? "s" : "");
-        console.log("Queuing " + amount + " for " + progress.series);
-    } else if (progress.action === "check") {
-        if (progress.type === "start") {
-            console.log("Checking " + progress.series);
-        }
-    } else {
-        console.log(progress.type + "\t" + progress.action + "\t" + progress.series + " " + (progress.chapter || ""));
-    }
-}
-
-function detailCleanOperation(job, cleanResults) {
-    var output = [];
-    if (cleanResults.creditsRemoved === 0 && cleanResults.duplicatesRemoved === 0) {
-        return console.log("Nothing to clean.");
-    }
-    if (job.cleanStarkanaCredits) {
-        output.push(cleanResults.creditsRemoved + ' credit');
-    }
-    if (job.cleanDuplicates) {
-        output.push(cleanResults.duplicatesRemoved + ' duplicate');
-    }
-    console.log('Removed ' + output.join(' and ') + ' files.');
-}
-
-function examples(exampleArray) {
-    var commandName = program._name;
-    console.log('  Examples:');
-    console.log();
-    exampleArray.forEach(function(example) {
-        console.log('    $ ' + commandName + ' ' + example);
-    });
-    console.log();
-}
-
 function clean(folders, config, cb) {
     if (!config.cleanStarkanaCredits && !config.cleanDuplicates) {
         return cb();
@@ -145,11 +159,11 @@ function clean(folders, config, cb) {
         cleanDuplicates: config.cleanDuplicates || false
     };
 
-    cleaner.cleanFolders(folders, job, function(error, cleanResults) {
+    cleaner.cleanFolders(folders, job, function(error, cleaningResults) {
         if (error) {
             return cb(error);
         }
-        detailCleanOperation(job, cleanResults);
+        detailCleanOperation(job, cleaningResults);
         return cb();
     });
 }
@@ -190,6 +204,24 @@ function postExecution(config, allowedOperations, cb) {
     };
 }
 
+function resolvePaths(folders, config) {
+    return folders.map(function(folder) {
+        return path.resolve(config.outputDirectory, folder);
+    });
+}
+
+function removeNonexistingFolders(folders, cb) {
+    async.filter(folders, fs.exists, function(existingFolders) {
+        var nonExistingFolders = folders.filter(function(folder) {
+            return existingFolders.indexOf(folder) === -1;
+        });
+
+        if (nonExistingFolders.length) {
+            printError("could not find folder" + plural(nonExistingFolders) + " " + nonExistingFolders.join(", "));
+        }
+        return cb(null, existingFolders);
+    });
+}
 
 program
     .version('1.0.0')
@@ -316,15 +348,25 @@ var cleanCommand = program
         var config = init(program, options);
         if (folders.length === 0) {
             folders = [config.outputDirectory];
+        } else if (!config.absolute) {
+            folders = resolvePaths(folders, config);
         }
 
-        clean(folders, config, function(error) {
-            folders = folders.map(function(f) {
-                return {
-                    outputFile: f
-                };
+        removeNonexistingFolders(folders, function(error, existingFolders) {
+            if (error) {
+                gracefulEnd(error);
+            }
+            clean(existingFolders, config, function(error) {
+                if (error) {
+                    gracefulEnd(error);
+                }
+                existingFolders = existingFolders.map(function(folder) {
+                    return {
+                        outputFile: folder
+                    };
+                });
+                postExecution(config, ["rename"], gracefulEnd)(error, existingFolders);
             });
-            postExecution(config, ["rename"], gracefulEnd)(error, folders);
         });
     }).on('--help', function() {
         examples([
@@ -341,8 +383,16 @@ var renameCommand = program
         var config = init(program, options);
         if (folders.length === 0) {
             folders = [config.outputDirectory];
+        } else if (!config.absolute) {
+            folders = resolvePaths(folders, config);
         }
-        rename(folders, config, gracefulEnd);
+        
+        removeNonexistingFolders(folders, function(error, existingFolders) {
+            if (error) {
+                gracefulEnd(error);
+            }
+            rename(existingFolders, config, gracefulEnd);
+        });
     }).on('--help', function() {
         examples([
             'rename /my/folder',
@@ -409,6 +459,11 @@ var subCommand = program
 [updateCommand, cacheCommand].forEach(function(command) {
     command
         .option('-r, --readDirectories <directories>', 'Directories in which to look into to find current progress (not including the outputDirectory). Separate by \';\'.');
+});
+
+[cleanCommand, renameCommand].forEach(function(command) {
+    command
+        .option('-a, --absolute', 'Folder arguments are absolute links, rather than series names.');
 });
 
 program.parse(process.argv);
