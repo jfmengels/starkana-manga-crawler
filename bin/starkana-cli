@@ -379,15 +379,6 @@ var subCommand = program
             action = "Unsubscribed from";
         } else { // Subscribing
             subscriber.subscribe(series, config, options.url);
-            config.subscriptions = config.subscriptions.sort(function(a, b) {
-                if (a.name < b.name) {
-                    return -1;
-                }
-                if (a.name > b.name) {
-                    return 1;
-                }
-                return 0;
-            });
             action = "Subscribed to";
         }
         saveConfig(config);
