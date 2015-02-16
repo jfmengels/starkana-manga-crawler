@@ -32,15 +32,21 @@ var allowedOutputFormats = ["folder", "zip"],
     };
 
 function gracefulEnd(error) {
-    if (error) {
-        console.error("\n  error: " + error + "\n");
-        process.exit(1);
+    if (!error) {
+        process.exit(0);
     }
-    process.exit(0);
+    if ("object" === typeof error) {
+        error = JSON.stringify(error, null, 4);
+    }
+    console.error("\n  error: " + error + "\n");
+    process.exit(1);
 }
 
 function saveConfig(config) {
     var configKeys = Object.keys(baseConfig);
+
+    // Do not save cacheData in config
+    configKeys.splice(configKeys.indexOf("cacheData"), 1);
     fs.writeFileSync(configFile, JSON.stringify(utils.pick(config, configKeys), null, 4));
 }
 
