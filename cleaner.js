@@ -1,7 +1,7 @@
 var fs = require("fs");
 var async = require("async");
 var crypto = require("crypto");
-var fileLister = require("file-lister");
+var listFiles = require("file-lister");
 
 var cleaner = {};
 
@@ -142,7 +142,7 @@ cleaner.cleanFiles = function(files, job, cb) {
 };
 
 cleaner.cleanFolders = function(folders, job, cb) {
-    async.map(folders, fileLister.listFiles, function(error, lists) {
+    async.map(folders, listFiles, function(error, lists) {
         if (error) {
             return cb(error);
         }
