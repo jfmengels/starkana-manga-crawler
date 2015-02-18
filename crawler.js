@@ -225,7 +225,7 @@ crawler.findDownloadJobs = function(fetchJob, config, cb, progressCb) {
         scripts: ["http://code.jquery.com/jquery.js"],
         done: function(errors, window) {
             if (errors) {
-                return cb(errors.join("\n"));
+                return cb(errors);
             }
             if (fetchJob.untilLast) {
                 addChaptersUntilLast(fetchJob, window.$);
