@@ -225,7 +225,7 @@ function removeNonexistingFolders(folders, cb) {
 
 program
     .version('1.0.0')
-    .option("--config <config>", "Set configuration file to use.")
+    .option("--config <config>", "Use this configuration file.")
     .option('-S, --save', 'Save settings to the default config file so that they will automatically be reused on the next call.');
 
 var downloadCommand = program
@@ -386,7 +386,7 @@ var renameCommand = program
         } else if (!config.absolute) {
             folders = resolvePaths(folders, config);
         }
-        
+
         removeNonexistingFolders(folders, function(error, existingFolders) {
             if (error) {
                 gracefulEnd(error);
@@ -468,7 +468,10 @@ var subCommand = program
 
 program.parse(process.argv);
 
-if (!process.argv.length) {
+if (process.argv.length === 2) {
+    printError("did not specify any command");
+    program.help();
+} else if (process.argv.length === 3) {
     var commands = [
         downloadCommand,
         updateCommand,
@@ -476,11 +479,19 @@ if (!process.argv.length) {
         subCommand,
         cleanCommand,
         renameCommand
-    ].map(function(c) {
-        return c.name();
-    });
+    ];
 
-    if (commands.indexOf(process.argv[2]) === -1 && commands.indexOf(process.argv[3]) === -1) {
+    var commandNames = commands.map(function(c) {
+            return c.name();
+        }),
+        commandAliases = commands.map(function(c) {
+            return c.alias();
+        }).filter(function(c) {
+            return c;
+        });
+
+    if (commandNames.indexOf(process.argv[2]) === -1 && commandAliases.indexOf(process.argv[2]) === -1) {
+        printError("unknown command " + process.argv[2]);
         program.help();
     }
 }
