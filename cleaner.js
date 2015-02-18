@@ -1,11 +1,12 @@
 var fs = require("fs");
+var path = require("path");
 var async = require("async");
 var crypto = require("crypto");
 var listFiles = require("file-lister");
 
 var cleaner = {};
 
-var creditsSampleFileName = "resources/starkana-credits.jpg",
+var creditsSampleFileName = path.resolve(__dirname, "resources", "starkana-credits.jpg"),
     _creditsCheckSum;
 
 function getCreditsChecksum() {

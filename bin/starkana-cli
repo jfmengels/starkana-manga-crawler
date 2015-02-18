@@ -2,11 +2,13 @@
 
 'use strict';
 
-var fs = require("fs");
-var path = require('path');
-var async = require('async');
-var extend = require('extend');
-var program = require('commander');
+var fs = require("fs"),
+    path = require('path'),
+    async = require('async'),
+    osenv = require('osenv'),
+    mkdirp = require('mkdirp'),
+    extend = require('extend'),
+    program = require('commander');
 
 var utils = require("../utils"),
     starkana = require("../index"),
@@ -16,10 +18,10 @@ var utils = require("../utils"),
     updater = starkana.updater,
     subscriber = starkana.subscriber;
 
-
 var allowedOutputFormats = ["folder", "zip"],
-    configFile = "./config.json",
-    cacheFile = "./cache.json",
+    resourceFolder = path.resolve(osenv.home(), ".starkana"),
+    configFile = path.resolve(resourceFolder, "config.json"),
+    cacheFile = path.resolve(resourceFolder, "cache.json"),
     baseConfig = {
         readDirectories: [],
         outputDirectory: ".",
@@ -27,8 +29,8 @@ var allowedOutputFormats = ["folder", "zip"],
         cleanStarkanaCredits: true,
         cleanDuplicates: false,
         rename: true,
-        subscriptions: [],
         cache: false,
+        subscriptions: [],
         cacheData: {}
     };
 
@@ -95,11 +97,17 @@ function saveConfig(config) {
 
     // Do not save cacheData in config
     configKeys.splice(configKeys.indexOf("cacheData"), 1);
+    mkdirp.sync(resourceFolder);
     fs.writeFileSync(configFile, JSON.stringify(utils.pick(config, configKeys), null, 4));
 }
 
 function saveCache(config, cb) {
-    fs.writeFile(cacheFile, JSON.stringify(config.cacheData, null, 4), cb);
+    mkdirp(resourceFolder, function(error) {
+        if (error) {
+            return cb(error);
+        }
+        fs.writeFile(cacheFile, JSON.stringify(config.cacheData, null, 4), cb);
+    });
 }
 
 function addResultsToCache(config, results, cb) {
@@ -251,7 +259,6 @@ var downloadCommand = program
                 untilLast: config.untilLast,
                 url: config.url
             });
-            console.log(job);
 
         crawler.runJobs([job], config, postExecution(config, ["updateCache", "clean", "rename"], gracefulEnd), progressPrinter);
 
@@ -301,6 +308,10 @@ var cacheCommand = program
                 keys = keys.filter(function(key) {
                     return series.indexOf(key) !== -1;
                 });
+            }
+
+            if (keys.length === 0) {
+                return console.log("Cache is empty.");
             }
 
             var cacheAsString = keys
