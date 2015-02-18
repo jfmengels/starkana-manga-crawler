@@ -229,28 +229,29 @@ program
     .option('-S, --save', 'Save settings to the default config file so that they will automatically be reused on the next call.');
 
 var downloadCommand = program
-    .command('download <series> <chapters> [maxChapter]')
+    .command('download <series> <chapter> [maxChapter]')
     .alias('dl')
     .description('Downloads specific chapters from a given series.')
     .option('-l, --untilLast', 'Download until the last released chapter')
     .option('-f, --outputFormat <outputFormat>', 'Set how the downloaded content will be outputted: ' + allowedOutputFormats.join(' | ') + '.')
     .option('-u, --url <url>', 'Use url path instead of normal one. Should not contain shared path "starkana.com/manga".')
     .option('-c, --cache', 'Use cache to remember the progress when using the update command.')
-    .action(function(series, chapters, maxChapter, options) {
+    .action(function(series, chapter, maxChapter, options) {
         if (!series) {
             gracefulEnd("Missing series argument.");
         }
-        if (!chapters) {
-            gracefulEnd("Missing chapters argument.");
+        if (!chapter) {
+            gracefulEnd("Missing chapter argument.");
         }
         var config = init(program, options),
-            job = crawler.createJob({
+            job = crawler.createFetchJob({
                 series: series,
-                chapter: parseFloat(chapters),
+                chapter: parseFloat(chapter),
                 maxChapter: parseFloat(maxChapter),
                 untilLast: config.untilLast,
                 url: config.url
             });
+            console.log(job);
 
         crawler.runJobs([job], config, postExecution(config, ["updateCache", "clean", "rename"], gracefulEnd), progressPrinter);
 

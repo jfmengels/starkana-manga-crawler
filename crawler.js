@@ -104,14 +104,14 @@ function progress(message, type, cb) {
 
 var crawler = {};
 
-crawler.createJob = function(jobRequest) {
+crawler.createFetchJob = function(jobRequest) {
     var minChapter = jobRequest.chapter,
         maxChapter = jobRequest.maxChapter;
 
     if (jobRequest.untilLast) {
         return {
             series: jobRequest.series,
-            currentChapter: jobRequest.currentChapter,
+            currentChapter: minChapter,
             untilLast: true,
             url: jobRequest.url
         };
