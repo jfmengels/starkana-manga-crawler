@@ -54,7 +54,8 @@ renamer.renameFiles = function(job, cb) {
 
     var queue = files.map(function(file) {
         var index = padding + (files.indexOf(file) + 1),
-            newName = job.folder + "/" + path.basename(job.folder) + ' - ' + index.substring(index.length - 3) + path.extname(file);
+            folder = path.dirname(path.resolve(file)),
+            newName = path.resolve(folder, path.basename(folder) + ' - ' + index.substring(index.length - 3) + path.extname(file))
 
         return {
             oldName: file,
