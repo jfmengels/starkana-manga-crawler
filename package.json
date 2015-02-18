@@ -1,6 +1,6 @@
 {
   "name": "starkana-manga-crawler",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Manga downloader using starkana.com.",
   "main": "index.js",
   "dependencies": {
@@ -21,6 +21,9 @@
   "repository": {
     "type": "git",
     "url": "https://github.com/jfmengels/starkana-manga-crawler"
+  },
+  "bin": {
+    "starkana-cli": "./bin/starkana-cli"
   },
   "keywords": [
     "manga",
