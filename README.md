@@ -42,9 +42,7 @@ var jobs = [
 ];
 ```
 
-`url` is optional, and will help determining the url of the series page. Should not contain "http://starkana.com/manga/" as it will be prepended to the url.
-It won't be needed for series like "Naruto" or "One Piece" (leave it undefined), but might for some with odd characters or for manhwas (ex: The Breaker --> "T/The_Breaker_(Manhwa)/").
-Take a look at crawler.getPageUrl() for more details.
+`url` is optional, and will help determining the url of the series page. Should not contain "http://starkana.com/manga/" as it will be prepended to the url. It won't be needed for series like "Naruto" or "One Piece" (leave it undefined), but might for some with odd characters or for manhwas (ex: The Breaker --> "T/The_Breaker_(Manhwa)/"). See crawler.getPageUrl() for more details.
 
 Alternatively, you can create fetch jobs using crawler.createFetchJob() for more ease.
 
@@ -146,6 +144,33 @@ var jobs = [
 
 // Then run those jobs using crawler.runJobs
 ```
+
+### crawler.getPageUrl(job)
+
+Returns the url for a series page.
+
+__job fields:__
+
+* `series`: The name of the series to download (ex: "One Piece").
+* `url`: Optional. If defined, will use this sub-url instead of a guessed one.Should not contain "http://starkana.jp/manga/" as it will be prepended to the url.
+It won't be needed for series like "Naruto" or "One Piece" (leave it undefined), but might for some with odd characters or for manhwas (ex: The Breaker --> "T/The_Breaker_(Manhwa)/").
+Take a look at crawler.getPageUrl() for more details.
+
+__Example__
+
+```js
+crawler.getPageUrl({
+    series: "History's Strongest Disciple Kenichi"
+});
+// --> http://starkana.jp/manga/H/Historys_Strongest_Disciple_Kenichi
+
+crawler.getPageUrl({
+    series: "The Breaker",
+    url: "T/The_Breaker_(Manhwa)"
+});
+// --> http://starkana.jp/manga/T/The_Breaker_(Manhwa)
+```
+
 
 ## updater
 

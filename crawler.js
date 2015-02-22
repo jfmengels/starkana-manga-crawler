@@ -104,6 +104,17 @@ function progress(message, type, cb) {
 
 var crawler = {};
 
+if(process.env.NODE_ENV === "test") {
+    crawler.private = {
+        findChapterLink: findChapterLink,
+        listChapters: listChapters,
+        addChaptersUntilLast: addChaptersUntilLast,
+        extractZip: extractZip,
+        findLatestChapterNumber: findLatestChapterNumber,
+        progress: progress
+    };
+}
+
 crawler.createFetchJob = function(jobRequest) {
     var minChapter = jobRequest.chapter,
         maxChapter = jobRequest.maxChapter;

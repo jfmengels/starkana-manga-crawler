@@ -102,7 +102,7 @@ updater.update = function(selectedSeries, config, cb, progressCb) {
         var jobs = seriesList.map(function(s) {
             return crawler.createFetchJob({
                 series: s.name,
-                minChapter: s.currentChapter,
+                chapter: s.currentChapter,
                 url: s.url,
                 untilLast: true
             });
