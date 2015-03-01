@@ -1,10 +1,12 @@
 var fs = require("fs");
+var AdmZip = require("adm-zip");
 var path = require("path");
 var http = require("follow-redirects").http;
 var async = require("async");
 var jsdom = require("jsdom");
+var rimraf = require("rimraf");
 var mkdirp = require("mkdirp");
-var AdmZip = require("adm-zip");
+var archiver = require("archiver");
 
 function findChapterLink($, chapterItem) {
     var result = {};
@@ -75,10 +77,30 @@ function addChaptersUntilLast(job, $) {
 }
 
 function extractZip(zipFile, outputFile, cb) {
-    var zip = new AdmZip(zipFile);
-    zip.extractAllTo(outputFile, true);
-
+    try {
+        var zip = new AdmZip(zipFile);
+        zip.extractAllTo(outputFile, true);
+    } catch (error) {
+        return cb(error);
+    }
     fs.unlink(zipFile, cb);
+}
+
+function compressZip(folder, zipFile, cb) {
+    // Using archiver for compressing, as using adm-zip is not working
+    // (getting archive with empty folders named after each file in the original folder)
+    var file = fs.createWriteStream(zipFile),
+        archive = archiver("zip");
+
+    archive.on('error', cb);
+    file.on("close", function() {
+        // Once the archive is created, remove the folder
+        rimraf(folder, cb);
+    });
+
+    archive.pipe(file);
+    archive.directory(folder, false);
+    archive.finalize();
 }
 
 function findLatestChapterNumber($) {
@@ -98,13 +120,119 @@ function progress(message, type, cb) {
     return cb(message);
 }
 
+function findPageImageSrc(pageCrawlJob, cb) {
+    jsdom.env({
+        url: pageCrawlJob.pageUrl,
+        done: function(errors, window) {
+            if (errors) {
+                return cb(errors);
+            }
+            var src = window.document.querySelector("#pic > div > img").getAttribute("src");
+            return cb(null, src);
+        }
+    });
+}
 
+function downloadPage(pageDownloadJob, config, cb) {
+    http.get(pageDownloadJob.url, function(res) {
+        var alreadyCalled = false;
+
+        function callback(error) {
+            if (!alreadyCalled) {
+                alreadyCalled = true;
+                return cb(error);
+            }
+        }
+        res.pipe(fs.createWriteStream(pageDownloadJob.outputFile))
+            .on("error", callback)
+            .on("finish", callback);
+    });
+}
+
+function downloadChapterPerPage(dlJob, config, cb) {
+    mkdirp(dlJob.outputFile, function(error) {
+        if (error) {
+            return cb(error);
+        }
+        dlJob.chapterUrl = dlJob.pageUrl + "/chapter/" + dlJob.chapter;
+        jsdom.env({
+            url: dlJob.chapterUrl,
+            done: function(errors, window) {
+                if (errors) {
+                    return cb(errors);
+                }
+
+                var numberOfPages = parseInt(window.document.querySelector("#bc2 > strong").textContent),
+                    // Creating a job for each page
+                    pageCrawlJobs = Array.apply(1, new Array(numberOfPages)).map(function(elt, index) {
+                        var page = index + 1;
+                        return {
+                            page: page,
+                            pageUrl: dlJob.chapterUrl + "/" + page
+                        };
+                    });
+
+                async.eachLimit(pageCrawlJobs, 5, function(pageCrawlJob, cb) {
+                    // Getting the source of the image to download
+                    findPageImageSrc(pageCrawlJob, function(error, src) {
+                        if (error) {
+                            return cb(error);
+                        }
+
+                        // Once we have the source, download it
+                        var splitSrc = src.split("/");
+                        downloadPage({
+                            page: pageCrawlJob.page,
+                            url: src,
+                            outputFile: path.resolve(dlJob.outputFile, splitSrc[splitSrc.length - 1])
+                        }, config, cb);
+                    });
+                }, cb);
+            }
+        });
+    });
+}
+
+function downloadChapterAsZip(dlJob, config, cb) {
+    mkdirp(path.dirname(dlJob.zipFile), function(error) {
+        if (error) {
+            return cb(error, dlJob);
+        }
+        var alreadyCalled = false;
+
+        function callback(error) {
+            if (!alreadyCalled) {
+                alreadyCalled = true;
+                return cb(error, dlJob);
+            }
+        }
+
+        var timeoutServerDoesNotRespond = setTimeout(function() {
+            callback("timeout");
+        }, config.starkana.timeoutSecs);
+
+        http.get(dlJob.url, function(res) {
+            var file = fs.createWriteStream(dlJob.zipFile);
+            res.on('data', function(data) {
+                clearTimeout(timeoutServerDoesNotRespond);
+                file.write(data);
+            }).on('end', function() {
+                clearTimeout(timeoutServerDoesNotRespond);
+                file.end();
+                return callback();
+            }).on('error', function(error) {
+                clearTimeout(timeoutServerDoesNotRespond);
+                return callback(error);
+            });
+        });
+    });
+}
 
 
 
 var crawler = {};
 
-if(process.env.NODE_ENV === "test") {
+if (process.env.NODE_ENV === "test") {
     crawler.private = {
         findChapterLink: findChapterLink,
         listChapters: listChapters,
@@ -117,48 +245,71 @@ if(process.env.NODE_ENV === "test") {
 
 crawler.createFetchJob = function(jobRequest) {
     var minChapter = jobRequest.chapter,
-        maxChapter = jobRequest.maxChapter;
+        maxChapter = jobRequest.maxChapter,
+        fetchJob = {
+            series: jobRequest.series,
+            url: jobRequest.url,
+            pageUrl: crawler.getPageUrl(jobRequest)
+        };
 
     if (jobRequest.untilLast) {
-        return {
-            series: jobRequest.series,
-            currentChapter: minChapter,
-            untilLast: true,
-            url: jobRequest.url
-        };
+        fetchJob.currentChapter = minChapter;
+        fetchJob.untilLast = true;
+    } else {
+        if (!maxChapter) {
+            maxChapter = minChapter;
+        }
+        if (maxChapter < minChapter) {
+            var tmp = minChapter;
+            minChapter = maxChapter;
+            maxChapter = tmp;
+        }
+        fetchJob.chapters = listChapters(minChapter, maxChapter);
     }
-
-    if (!maxChapter) {
-        maxChapter = minChapter;
-    }
-    if (maxChapter < minChapter) {
-        var tmp = minChapter;
-        minChapter = maxChapter;
-        maxChapter = tmp;
-    }
-    return {
-        series: jobRequest.series,
-        chapters: listChapters(minChapter, maxChapter),
-        url: jobRequest.url
-    };
+    return fetchJob;
 };
 
-crawler.runJobs = function(fetchJobs, config, cb, progressCb) {
-    if (!progressCb) {
-        progressCb = function() {};
+crawler.downloadChapter = function(dlJob, config, cb, progressCb) {
+    progressCb = progressCb || function() {};
+
+    var downloadProgress = {
+        action: "download",
+        target: "chapter",
+        series: dlJob.series,
+        chapter: dlJob.chapter,
+    };
+
+    progress(downloadProgress, "start", progressCb);
+
+
+    function downloadPerPage() {
+        downloadChapterPerPage(dlJob, config, function(error) {
+            if (error) {
+                return cb(error);
+            }
+            progress(downloadProgress, "end", progressCb);
+            if (config.outputFormat === "zip") {
+                return compressZip(dlJob.outputFile, dlJob.zipFile, function(error) {
+                    if (error) {
+                        return cb(error, dlJob);
+                    }
+                    return cb(null, dlJob);
+                });
+            }
+            return cb(null, dlJob);
+        });
     }
 
-    function launchDownloadJob(dlJob, cb) {
-        var downloadProgress = {
-            action: "download",
-            target: "chapter",
-            series: dlJob.series,
-            chapter: dlJob.chapter,
-        };
-
-        progress(downloadProgress, "start", progressCb);
-        crawler.downloadChapterAsZip(dlJob, function(error) {
+    if (config.starkana.shouldUseFallback) {
+        return downloadPerPage();
+    } else {
+        downloadChapterAsZip(dlJob, config, function(error) {
             if (error) {
+                if (error === "timeout" && config.starkana.fallbackToIndividualPagesOnTimeout) {
+                    config.starkana.shouldUseFallback = true;
+                    progress(downloadProgress, "fallback", progressCb);
+                    return downloadPerPage();
+                }
                 return cb(error, dlJob);
             }
             progress(downloadProgress, "end", progressCb);
@@ -169,6 +320,14 @@ crawler.runJobs = function(fetchJobs, config, cb, progressCb) {
                 return cb(error, dlJob);
             });
         });
+    }
+};
+
+crawler.runJobs = function(fetchJobs, config, cb, progressCb) {
+    progressCb = progressCb || function() {};
+
+    function launchDownloadJob(dlJob, cb) {
+        return crawler.downloadChapter(dlJob, config, cb, progressCb);
     }
 
     var hasFinishedFetching = false,
@@ -265,7 +424,8 @@ crawler.findDownloadJobs = function(fetchJob, config, cb, progressCb) {
                         chapter: chapter,
                         outputFile: outputFile,
                         zipFile: outputFile + ".zip",
-                        url: link.url
+                        url: link.url,
+                        pageUrl: fetchJob.pageUrl
                     };
                 })
                 .filter(function(item) {
@@ -276,29 +436,37 @@ crawler.findDownloadJobs = function(fetchJob, config, cb, progressCb) {
     });
 };
 
-crawler.downloadChapterAsZip = function(dlJob, cb) {
-    mkdirp(path.dirname(dlJob.zipFile), function(error) {
-        if (error) {
-            return cb(error, dlJob);
-        }
-        http.get(dlJob.url, function(res) {
-            var alreadyCalled = false;
+crawler.getPageUrl = function(job) {
+    if (job.pageUrl) {
+        return job.pageUrl;
+    }
+    var baseUrl = "http://starkana.jp/manga/";
+    if (job.url) {
+        return baseUrl + job.url;
+    }
 
-            function callback(error) {
-                if (!alreadyCalled) {
-                    alreadyCalled = true;
-                    return cb(error, dlJob);
-                }
-            }
-            res.pipe(fs.createWriteStream(dlJob.zipFile))
-                .on("error", callback)
-                .on("finish", callback);
-        });
-    });
+    // Starkana separates series based on the first character in their name.
+    // On odd names (starting with number, dots, etc.), that category will be "0".
+    var series = job.series,
+        firstChar = series.charAt(0);
+    if (!firstChar.match(/[a-z]/i)) {
+        firstChar = "0";
+    }
+    // Url example: "http://starkana.jp/manga/O/One_Piece" for One Piece
+    var seriesName = series
+        .replace(/\s/g, "_")
+        .replace(/'/g, "");
+
+    return baseUrl + firstChar + "/" + seriesName;
 };
 
-crawler.getPageUrl = function(job) {
+
+
+crawler.getChapterPageUrl = function(job) {
     var baseUrl = "http://starkana.jp/manga/";
+    if (job.pageUrl) {
+        return job.pageUrl;
+    }
     if (job.url) {
         return baseUrl + job.url;
     }

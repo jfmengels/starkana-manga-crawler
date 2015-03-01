@@ -31,7 +31,12 @@ var allowedOutputFormats = ["folder", "zip"],
         rename: true,
         cache: false,
         subscriptions: [],
-        cacheData: {}
+        cacheData: {},
+        starkana: {
+            timeoutSecs: 10,
+            shouldUseFallback: false,
+            fallbackToIndividualPagesOnTimeout: true
+        }
     };
 
 
@@ -158,7 +163,7 @@ function init(program, options) {
 }
 
 function clean(folders, config, cb) {
-    if (!config.cleanStarkanaCredits && !config.cleanDuplicates) {
+    if ((!config.cleanStarkanaCredits && !config.cleanDuplicates)) {
         return cb();
     }
 
@@ -197,6 +202,9 @@ function postExecution(config, allowedOperations, cb) {
         }
 
         if ((config.cleanStarkanaCredits || config.cleanDuplicates) && allowedOperations.indexOf("clean") !== -1) {
+            if (config.outputFormat === "zip") {
+                folders = [];
+            }
             tasks.push(function(cb) {
                 clean(folders, config, cb);
             });
