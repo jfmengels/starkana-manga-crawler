@@ -209,7 +209,7 @@ function downloadChapterAsZip(dlJob, config, cb) {
 
         var timeoutServerDoesNotRespond = setTimeout(function() {
             callback("timeout");
-        }, config.starkana.timeoutSecs);
+        }, config.starkana.timeoutMs);
 
         http.get(dlJob.url, function(res) {
             var file = fs.createWriteStream(dlJob.zipFile);

@@ -33,7 +33,7 @@ var allowedOutputFormats = ["folder", "zip"],
         subscriptions: [],
         cacheData: {},
         starkana: {
-            timeoutSecs: 10,
+            timeoutMs: 10000,
             shouldUseFallback: false,
             fallbackToIndividualPagesOnTimeout: true
         }
