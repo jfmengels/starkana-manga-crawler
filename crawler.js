@@ -6,7 +6,15 @@ var async = require("async");
 var jsdom = require("jsdom");
 var rimraf = require("rimraf");
 var mkdirp = require("mkdirp");
+var request = require("request");
 var archiver = require("archiver");
+
+jsdom.defaultDocumentFeatures = {
+    FetchExternalResources: [],
+    MutationEvents: '2.0',
+    ProcessExternalResources: [],
+    SkipExternalResources: false
+};
 
 function findChapterLink($, chapterItem) {
     var result = {};
@@ -206,25 +214,21 @@ function downloadChapterAsZip(dlJob, config, cb) {
                 return cb(error, dlJob);
             }
         }
-
-        var timeoutServerDoesNotRespond = setTimeout(function() {
-            callback("timeout");
-        }, config.starkana.timeoutMs);
-
-        http.get(dlJob.url, function(res) {
-            var file = fs.createWriteStream(dlJob.zipFile);
-            res.on('data', function(data) {
-                clearTimeout(timeoutServerDoesNotRespond);
-                file.write(data);
-            }).on('end', function() {
-                clearTimeout(timeoutServerDoesNotRespond);
-                file.end();
-                return callback();
-            }).on('error', function(error) {
-                clearTimeout(timeoutServerDoesNotRespond);
-                return callback(error);
+        var res = request
+            .get({
+                url: dlJob.url,
+                timeout: config.starkana.timeoutMs
+            }, function(error, httpResponse) {
+                if (error) {
+                    if (error.code === "ETIMEDOUT") {
+                        return callback("timeout");
+                    }
+                    return callback(error);
+                }
+                res.pipe(fs.createWriteStream(dlJob.zipFile))
+                    .on("error", callback)
+                    .on("finish", callback);
             });
-        });
     });
 }
 

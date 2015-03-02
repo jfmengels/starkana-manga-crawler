@@ -69,7 +69,7 @@ function progressPrinter(progress) {
             console.log("Checking " + progress.series);
         }
     } else {
-        console.log(progress.type + "\t" + progress.action + "\t" + progress.series + " " + (progress.chapter || ""));
+        console.log(progress.type + "\t" + progress.action + "\t" + progress.series + " " + progress.chapter);
     }
 }
 

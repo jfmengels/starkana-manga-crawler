@@ -1,3 +1,5 @@
+var path = require("path");
+
 module.exports = {
 	convertSeriesToObject: function(seriesList) {
 		var result = {};
@@ -13,5 +15,13 @@ module.exports = {
 			result[key] = object[key];
 		});
 		return result;
+	},
+
+	folderName: function(series, number) {
+		return series + " " + number;
+	},
+
+	parseNumber: function(item, delimiter) {
+		return parseFloat(item.slice(item.indexOf(delimiter) + delimiter.length));
 	}
 };
