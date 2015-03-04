@@ -143,17 +143,9 @@ function findPageImageSrc(pageCrawlJob, cb) {
 
 function downloadPage(pageDownloadJob, config, cb) {
     http.get(pageDownloadJob.url, function(res) {
-        var alreadyCalled = false;
-
-        function callback(error) {
-            if (!alreadyCalled) {
-                alreadyCalled = true;
-                return cb(error);
-            }
-        }
         res.pipe(fs.createWriteStream(pageDownloadJob.outputFile))
-            .on("error", callback)
-            .on("finish", callback);
+            .on("error", cb)
+            .on("finish", cb);
     });
 }
 

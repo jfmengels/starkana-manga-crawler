@@ -1,6 +1,6 @@
 {
   "name": "starkana-manga-crawler",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "description": "Manga downloader using starkana.com.",
   "main": "index.js",
   "dependencies": {
