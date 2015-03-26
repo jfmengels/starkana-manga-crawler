@@ -141,7 +141,7 @@ function findPageImageSrc(pageCrawlJob, cb) {
     });
 }
 
-function downloadPage(pageDownloadJob, config, cb) {
+function downloadPage(pageDownloadJob, cb) {
     http.get(pageDownloadJob.url, function(res) {
         res.pipe(fs.createWriteStream(pageDownloadJob.outputFile))
             .on("error", cb)
@@ -185,7 +185,7 @@ function downloadChapterPerPage(dlJob, config, cb) {
                             page: pageCrawlJob.page,
                             url: src,
                             outputFile: path.resolve(dlJob.outputFile, splitSrc[splitSrc.length - 1])
-                        }, config, cb);
+                        }, cb);
                     });
                 }, cb);
             }
@@ -206,16 +206,16 @@ function downloadChapterAsZip(dlJob, config, cb) {
                 return cb(error, dlJob);
             }
         }
-        var res = request
+
+        request
             .get({
                 url: dlJob.url,
                 timeout: config.starkana.timeoutMs
-            }, function(error, httpResponse) {
-                if (error) {
-                    if (error.code === "ETIMEDOUT") {
-                        return callback("timeout");
-                    }
-                    return callback(error);
+            })
+            .on("error", callback)
+            .on("response", function(res) {
+                if (res.statusCode !== 200) {
+                    return callback(new Error("Unexpected response status code " + res.statusCode));
                 }
                 res.pipe(fs.createWriteStream(dlJob.zipFile))
                     .on("error", callback)
@@ -301,7 +301,7 @@ crawler.downloadChapter = function(dlJob, config, cb, progressCb) {
     } else {
         downloadChapterAsZip(dlJob, config, function(error) {
             if (error) {
-                if (error === "timeout" && config.starkana.fallbackToIndividualPagesOnTimeout) {
+                if ((error === "timeout" || /Unexpected response status code 5/.test(error.message)) && config.starkana.fallbackToIndividualPagesOnTimeout) {
                     config.starkana.shouldUseFallback = true;
                     progress(downloadProgress, "fallback", progressCb);
                     return downloadPerPage();

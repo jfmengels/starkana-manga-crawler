@@ -39,63 +39,31 @@ describe("crawler", function() {
     });
 
 
+    describe("private functions", function() {
+        describe("#progress()", function() {
+            it("should send a message with a given type", function() {
+                function callback(originalMessage, type) {
+                    return function(message) {
+                        should.exist(message);
+                        message.should.eql(extend({}, originalMessage, {
+                            type: type
+                        }));
+                    };
+                }
 
-    describe("#getPageUrl()", function() {
-        var urlRegex = /^https?:\/\/starkana\.(\w+)\/manga\/([A-Z0-9]\/.*)$/;
+                function launchTest(message, type) {
+                    var cb = callback(extend({}, message), type);
+                    crawler.private.progress(message, type, cb);
+                }
 
-        it("should convert simple series name", function() {
-            var pageUrl = crawler.getPageUrl({
-                series: "Naruto"
-            });
-
-            pageUrl.should.be.a.String.and.match(urlRegex);
-            urlRegex.exec(pageUrl)[2].should.equal("N/Naruto");
-        });
-
-        it("should escape special characters", function() {
-            var pageUrl = crawler.getPageUrl({
-                series: "History's Strongest Disciple Kenichi"
-            });
-
-            pageUrl.should.be.a.String.and.match(urlRegex);
-            urlRegex.exec(pageUrl)[2].should.equal("H/Historys_Strongest_Disciple_Kenichi");
-        });
-
-        it("should use url in job when present", function() {
-            var pageUrl = crawler.getPageUrl({
-                series: "The Breaker",
-                url: "T/The_Breaker_(Manhwa)"
-            });
-
-            pageUrl.should.be.a.String.and.match(urlRegex);
-            urlRegex.exec(pageUrl)[2].should.equal("T/The_Breaker_(Manhwa)");
-        });
-    });
-
-
-    describe("private #progress()", function() {
-        it("should send a message with a given type", function() {
-            function callback(originalMessage, type) {
-                return function(message) {
-                    should.exist(message);
-                    message.should.eql(extend({}, originalMessage, {
-                        type: type
-                    }));
+                var message = {
+                    ok: true
                 };
-            }
-
-            function launchTest(message, type) {
-                var cb = callback(extend({}, message), type);
-                crawler.private.progress(message, type, cb);
-            }
-
-            var message = {
-                ok: true
-            };
-            launchTest(message, "start");
-            message.should.have.property("type", "start");
-            launchTest(message, "end");
-            message.should.have.property("type", "end");
+                launchTest(message, "start");
+                message.should.have.property("type", "start");
+                launchTest(message, "end");
+                message.should.have.property("type", "end");
+            });
         });
     });
 });
