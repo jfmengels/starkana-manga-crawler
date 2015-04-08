@@ -22,7 +22,15 @@ function findChapterLink($, chapterItem) {
         result.url = chapterItem.url;
         return result;
     }
-    var element = $("#inner_page td:contains('chapter " + chapterItem.chapter + "')").next().children("a");
+
+    var chapterRegex = new RegExp("chapter " + chapterItem.chapter + "$");
+    var element = $("#inner_page td")
+        .filter(function() {
+            var text = $(this).text().trim();
+            return chapterRegex.test(text);
+        })
+        .next()
+        .children("a");
 
     if (!element.length) {
         result.isMissing = true;
@@ -135,7 +143,7 @@ function findPageImageSrc(pageCrawlJob, cb) {
             if (errors) {
                 return cb(errors);
             }
-            var src = window.document.querySelector("#pic > div > img").getAttribute("src");
+            var src = window.document.querySelector("#pic img").getAttribute("src");
             return cb(null, src);
         }
     });
